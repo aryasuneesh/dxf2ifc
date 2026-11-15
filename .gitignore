@@ -8,3 +8,4 @@ out/
 __pycache__/
 .pytest_cache/
 tests/out/
+docs/results.md

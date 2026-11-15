@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "source": {
+    "file": "house.dxf", "project": "house",
+    "units_in": "m", "scale_to_m": 1.0, "origin_offset": [0.0, 0.0],
+    "family": "layered"
+  },
+  "storey": {
+    "name": "NIVEAU +01", "elevation_m": 3.20, "height_m": 3.00,
+    "height_source": "default", "confidence": 0.5
+  },
+  "walls": [
+    {"id": "w1", "axis": [[0.0, 0.1], [10.0, 0.1]], "thickness_m": 0.20, "is_external": true,
+     "confidence": 0.9, "rule": "parallel_pair", "src": {"layer": "MUR", "handles": ["A1", "A2", "A3", "A4"]}},
+    {"id": "w2", "axis": [[0.0, 5.9], [10.0, 5.9]], "thickness_m": 0.20, "is_external": true,
+     "confidence": 0.9, "rule": "parallel_pair", "src": {"layer": "MUR", "handles": ["A5", "A6"]}},
+    {"id": "w3", "axis": [[0.1, 0.0], [0.1, 6.0]], "thickness_m": 0.20, "is_external": true,
+     "confidence": 0.9, "rule": "parallel_pair", "src": {"layer": "MUR", "handles": ["A7", "A8"]}},
+    {"id": "w4", "axis": [[6.0, 0.0], [6.0, 6.0]], "thickness_m": 0.10, "is_external": false,
+     "confidence": 0.9, "rule": "parallel_pair", "src": {"layer": "MUR", "handles": ["A9", "AA", "AB", "AC"]}},
+    {"id": "w5", "axis": [[9.9, 0.0], [9.9, 6.0]], "thickness_m": 0.20, "is_external": true,
+     "confidence": 0.9, "rule": "parallel_pair", "src": {"layer": "MUR", "handles": ["AD", "AE"]}}
+  ],
+  "openings": [
+    {"id": "o1", "kind": "door", "wall_id": "w1", "center": [3.0, 0.1], "width_m": 1.00,
+     "height_m": 2.10, "sill_m": 0.0, "tag": "P.01.02", "confidence": 0.5, "rule": "gap+tag",
+     "src": {"layer": "TEXTE", "handles": ["B1"]}},
+    {"id": "o2", "kind": "door", "wall_id": "w4", "center": [6.0, 2.0], "width_m": 0.90,
+     "height_m": 2.10, "sill_m": 0.0, "tag": "P.01.01", "confidence": 0.5, "rule": "gap+tag+symbol",
+     "src": {"layer": "PORTE", "handles": ["B2", "B3"]}}
+  ],
+  "rooms": [
+    {"id": "r1", "name": "BUREAU 1", "polygon": [[0.2, 0.2], [5.95, 0.2], [5.95, 5.8], [0.2, 5.8]],
+     "area_m2": 32.2, "area_printed_m2": 32.2, "confidence": 0.95, "rule": "flood_fill",
+     "src": {"layer": "TEXTE", "handles": ["C1", "C2"]}},
+    {"id": "r2", "name": "BUREAU 2", "polygon": [[6.05, 0.2], [9.8, 0.2], [9.8, 5.8], [6.05, 5.8]],
+     "area_m2": 21.0, "area_printed_m2": 21.0, "confidence": 0.95, "rule": "flood_fill",
+     "src": {"layer": "TEXTE", "handles": ["C3", "C4"]}}
+  ],
+  "slab": {
+    "outline": [[0.0, 0.0], [10.0, 0.0], [10.0, 6.0], [0.0, 6.0]], "thickness_m": 0.25,
+    "confidence": 0.4, "rule": "default_thickness"
+  },
+  "flags": [
+    {"element_id": "storey", "severity": "review", "reason": "storey height is a default (3.00 m)"},
+    {"element_id": "slab", "severity": "review", "reason": "slab thickness is a default (0.25 m)"},
+    {"element_id": "o1", "severity": "review", "reason": "door height is a default (2.10 m)"},
+    {"element_id": "o2", "severity": "review", "reason": "door height is a default (2.10 m)"}
+  ],
+  "stats": {
+    "wall_layer_length_m": 69.8, "wall_explained_length_m": 68.6,
+    "labels_total": 9, "labels_unused": 1, "runtime_s": 0.0, "llm_calls": 0
+  }
+}

@@ -1,0 +1,10 @@
+.venv/
+data/
+out/
+.cache/
+.env
+*.ifc
+*.dxf
+__pycache__/
+.pytest_cache/
+tests/out/

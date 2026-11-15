@@ -1,0 +1,7 @@
+ezdxf
+ifcopenshell==0.9.0.post1
+shapely
+numpy
+opencv-python-headless
+matplotlib
+pytest

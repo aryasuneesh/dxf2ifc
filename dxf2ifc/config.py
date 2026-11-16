@@ -144,3 +144,4 @@ REVIEW_CROP_MARGIN = 2.0  # m shown around a flagged element
 REVIEW_CROP_PX = 400  # size of a crop
 REVIEW_MAX_CROPS = 40  # further items are listed without a picture
 REVIEW_MAX_UNUSED_TEXT = 50  # unused texts listed on the page
+MAX_WALL_CANDIDATES = 60_000  # more wall-layer lines than this is refused (hatching, detail sheets)

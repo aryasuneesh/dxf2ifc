@@ -295,6 +295,8 @@ def _door_swings(drawing):
         if config.SWING_SWEEP[0] <= group["sweep"] <= config.SWING_SWEEP[1]:
             pts = group["points"]  # the two outermost points are the ends of the whole swing
             a, b = max(((u, v) for u in pts for v in pts), key=lambda pair: math.dist(*pair))
+            if math.dist(a, b) < config.SWING_R_MIN / 2:  # pieces that close on themselves are not a door
+                continue
             swings.append({"hinge": group["hinge"], "ends": [tuple(map(float, a)), tuple(map(float, b))],
                            "r": group["r"], "handle": group["handle"]})
     return swings
@@ -673,6 +675,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                       "reason": "layers carry no meaning in this file; walls were guessed from line weight"})
 
     candidates = _wall_candidates(drawing, roles)
+    if len(candidates) > config.MAX_WALL_CANDIDATES:  # pairing would take hours; no floor plan has this many
+        raise ValueError(f"{Path(drawing.path).name}: {len(candidates)} lines on the wall layers; "
+                         "this looks like hatching or a detail sheet, not a floor plan")
     walls, gaps = _merge_walls(_pair_walls(candidates))
     xs = [v for seg in drawing.segments for v in (seg.x1, seg.x2)] or [0.0]
     ys = [v for seg in drawing.segments for v in (seg.y1, seg.y2)] or [0.0]

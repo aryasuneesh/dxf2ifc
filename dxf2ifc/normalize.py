@@ -140,7 +140,10 @@ class _Collector:
             return
         self.count += 1
         kind = entity.dxftype()
-        raw_layer = entity.dxf.get("layer", "0")
+        try:
+            raw_layer = entity.dxf.get("layer", "0")
+        except ezdxf.DXFAttributeError:  # point clouds, section objects: nothing we draw
+            return
         if raw_layer == "0" and inherit:
             raw_layer = inherit
         handle, block = top or (entity.dxf.handle or "", None)

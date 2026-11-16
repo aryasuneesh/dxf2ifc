@@ -236,3 +236,19 @@ def test_drawing_without_rooms_is_called_out(tmp_path):
     plan, _ = run(tmp_path, edit=keep_one_wall)
     assert plan["walls"] and plan["rooms"] == []
     assert any("may be an elevation" in f["reason"] for f in plan["flags"])
+
+
+def test_too_many_wall_lines_is_refused_quickly(tmp_path, monkeypatch):
+    from dxf2ifc import config
+    monkeypatch.setattr(config, "MAX_WALL_CANDIDATES", 10)
+    with pytest.raises(ValueError, match="not a floor plan"):
+        run(tmp_path)
+
+
+def test_arcs_that_close_on_themselves_are_not_doors(tmp_path):
+    def add_circle_in_two_halves(msp):  # a round column or a symbol, same centre and radius
+        msp.add_arc((2.0, 4.0), 0.8, 0, 45, dxfattribs={"layer": "PORTE"})
+        msp.add_arc((2.0, 4.0), 0.8, 45, 0, dxfattribs={"layer": "PORTE"})
+
+    plan, _ = run(tmp_path, edit=add_circle_in_two_halves)
+    assert len(plan["openings"]) == 2

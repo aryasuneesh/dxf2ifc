@@ -29,53 +29,102 @@ NOT_ENTITIES = (b"BLOCK", b"ENDBLK", b"SEQEND", b"VERTEX")
 AREA_RE = re.compile(r"\d+[.,]\d+\s*m\s?[2²]", re.IGNORECASE)
 
 
-def fast_scan(stream) -> dict:
-    """Count entities, layers, texts and block names from a binary DXF stream, pair by pair."""
-    counts, layers, blocks, texts = Counter(), set(), set(), []
-    units = section = entity = variable = None
-    name_next = False
-    lines = iter(stream)
-    first = next(lines, b"")
-    if first.startswith(b"AutoCAD Binary DXF"):
-        raise ValueError("binary")
-    code = first
-    while True:
-        value = next(lines, None)
-        if value is None:
-            break
-        code, value = code.strip(), value.strip()
-        if code == b"0":
+BINARY_SENTINEL = b"AutoCAD Binary DXF\r\n\x1a\x00"
+
+
+def _value_sizes():
+    """Bytes taken by the value of each group code in a binary DXF. -1 = text ending in a zero byte,
+    -2 = one length byte followed by that many bytes."""
+    sizes = [-1] * 1072
+    for ranges, size in (
+            (((10, 59), (110, 149), (210, 239), (460, 469), (1010, 1059)), 8),  # floating point
+            (((60, 79), (170, 179), (270, 289), (370, 389), (400, 409), (1060, 1070)), 2),
+            (((90, 99), (420, 429), (440, 459), (1071, 1071)), 4),
+            (((160, 169),), 8),
+            (((290, 299),), 1),
+            (((310, 319), (1004, 1004)), -2)):
+        for low, high in ranges:
+            sizes[low:high + 1] = [size] * (high - low + 1)
+    return sizes
+
+
+SIZES = _value_sizes()
+
+
+class _Tally:
+    """What the scan keeps: entity counts, layer names, texts, block names, the drawing unit."""
+
+    def __init__(self):
+        self.counts, self.layers, self.blocks, self.texts = Counter(), set(), set(), []
+        self.units = self.section = self.entity = self.variable = None
+        self.name_next = False
+
+    def text(self, code: int, value: bytes):
+        """One text-valued tag. Only codes 0, 1, 2, 8 and 9 are passed in."""
+        if code == 0:
             if value == b"SECTION":
-                name_next, entity = True, None
+                self.name_next, self.entity = True, None
             elif value == b"ENDSEC":
-                section = None
-            elif section in (b"ENTITIES", b"BLOCKS"):
-                entity = value
+                self.section = None
+            elif self.section in (b"ENTITIES", b"BLOCKS"):
+                self.entity = value
                 if value not in NOT_ENTITIES:
-                    counts[value] += 1
-        elif name_next and code == b"2":
-            section, name_next = value, False
-        elif section == b"HEADER":
-            if code == b"9":
-                variable = value
-            elif variable == b"$INSUNITS" and code == b"70":
-                units = int(value or 0)
-        elif section in (b"ENTITIES", b"BLOCKS"):
-            if code == b"8":
-                if len(layers) < 2000:
-                    layers.add(value)
-            elif code == b"1":
-                if entity in TEXT_TYPES and len(texts) < 300:
-                    texts.append(value[:60])
-            elif code == b"2" and entity == b"INSERT" and len(blocks) < 500:
-                blocks.add(value)
-        code = next(lines, None)
-        if code is None:
-            break
-    decode = lambda raw: raw.decode("utf-8", errors="replace")
-    return {"counts": {decode(k): v for k, v in counts.items()}, "units": units,
-            "layers": sorted(decode(v) for v in layers), "blocks": sorted(decode(v) for v in blocks),
-            "texts": [decode(v) for v in texts]}
+                    self.counts[value] += 1
+        elif code == 2 and self.name_next:
+            self.section, self.name_next = value, False
+        elif self.section == b"HEADER":
+            if code == 9:
+                self.variable = value
+        elif self.section in (b"ENTITIES", b"BLOCKS"):
+            if code == 8:
+                if len(self.layers) < 2000:
+                    self.layers.add(value)
+            elif code == 1:
+                if self.entity in TEXT_TYPES and len(self.texts) < 300:
+                    self.texts.append(value[:60])
+            elif code == 2 and self.entity == b"INSERT" and len(self.blocks) < 500:
+                self.blocks.add(value)
+
+    def result(self) -> dict:
+        decode = lambda raw: raw.decode("utf-8", errors="replace")
+        return {"counts": {decode(k): v for k, v in self.counts.items()}, "units": self.units,
+                "layers": sorted(decode(v) for v in self.layers), "blocks": sorted(decode(v) for v in self.blocks),
+                "texts": [decode(v) for v in self.texts]}
+
+
+def fast_scan(stream) -> dict:
+    """Count entities, layers, texts and block names in a DXF, text or binary, without building objects."""
+    data = stream.read()
+    tally = _Tally()
+    if data.startswith(BINARY_SENTINEL):
+        pos, end, sizes, find = len(BINARY_SENTINEL), len(data), SIZES, data.find
+        while pos + 2 <= end:
+            code = data[pos] | data[pos + 1] << 8
+            pos += 2
+            size = sizes[code] if code < 1072 else -1
+            if size > 0:
+                if code == 70 and tally.variable == b"$INSUNITS":
+                    tally.units, tally.variable = int.from_bytes(data[pos:pos + 2], "little", signed=True), None
+                pos += size
+            elif size == -1:
+                stop = find(b"\x00", pos)
+                if stop < 0:
+                    break
+                if code in (0, 1, 2, 8, 9):
+                    tally.text(code, data[pos:stop])
+                pos = stop + 1
+            else:
+                pos += 1 + data[pos]
+    else:
+        lines = data.split(b"\n")
+        wanted = {b"0": 0, b"1": 1, b"2": 2, b"8": 8, b"9": 9}
+        for i in range(0, len(lines) - 1, 2):
+            code = lines[i].strip()
+            if code in wanted:
+                tally.text(wanted[code], lines[i + 1].strip())
+            elif code == b"70" and tally.variable == b"$INSUNITS":
+                tally.units, tally.variable = int(lines[i + 1].strip() or 0), None
+    return tally.result()
 
 
 def score(scan: dict) -> tuple[int, list[str]]:

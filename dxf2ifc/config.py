@@ -133,3 +133,14 @@ TRIAGE_THUMB_MAX_MB = 60  # larger files get no thumbnail
 
 # --- batch runs over many files ---
 BATCH_MAX_MB = 25  # larger drawings are skipped in dataset-wide runs
+
+# --- checks and review page (section 07) ---
+R9_AREA_TOL = 0.05  # a room passes when its area is within this share of the printed area
+R9_MIN_SHARE = 0.80  # share of labelled rooms that must pass
+R10_MIN_COVERAGE = 0.85  # share of wall-line length that must end up in a wall
+R12_MAX_SECONDS = 60  # one run on a laptop
+REVIEW_PLAN_MARGIN = 2.0  # m of drawing shown around the building on the full plan
+REVIEW_CROP_MARGIN = 2.0  # m shown around a flagged element
+REVIEW_CROP_PX = 400  # size of a crop
+REVIEW_MAX_CROPS = 40  # further items are listed without a picture
+REVIEW_MAX_UNUSED_TEXT = 50  # unused texts listed on the page

@@ -1,0 +1,274 @@
+"""The review page: the plan coloured by confidence and the list of what an engineer must check.
+
+One self-contained HTML file: images are embedded, there is no script and no outside link.
+# ponytail: crops are static pictures. Upgrade if SECO wants it: link each item to its element
+# in a 3D viewer through the IFC id shown next to it.
+"""
+
+import base64
+import html
+import io
+import math
+from collections import Counter
+from datetime import date
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.collections import LineCollection
+
+from . import config
+from .schema import level
+
+HEX = {name: "#%02x%02x%02x" % tuple(round(c * 255) for c in rgb) for name, rgb in config.CONFIDENCE_COLOURS.items()}
+NOT_MODELLED = ["Curved walls", "Columns and beams", "Stairs and ramps", "Roofs", "Furniture and equipment",
+                "Anything shown only on sections or elevations (true heights, level changes)"]
+
+
+def _strip(axis, thickness):
+    (x1, y1), (x2, y2) = axis
+    length = math.hypot(x2 - x1, y2 - y1) or 1.0
+    nx, ny = -(y2 - y1) / length * thickness / 2, (x2 - x1) / length * thickness / 2
+    return [(x1 + nx, y1 + ny), (x2 + nx, y2 + ny), (x2 - nx, y2 - ny), (x1 - nx, y1 - ny)]
+
+
+def _boxes(plan) -> dict:
+    """Bounding box (xmin, ymin, xmax, ymax) of every element that has a place on the plan."""
+    boxes = {}
+    walls = {w["id"]: w for w in plan["walls"]}
+    for wall in plan["walls"]:
+        xs, ys = zip(*_strip(wall["axis"], wall["thickness_m"]))
+        boxes[wall["id"]] = (min(xs), min(ys), max(xs), max(ys))
+    for opening in plan["openings"]:
+        (x, y), half = opening["center"], opening["width_m"] / 2
+        boxes[opening["id"]] = (x - half, y - half, x + half, y + half)
+    for room in plan["rooms"]:
+        xs, ys = zip(*room["polygon"])
+        boxes[room["id"]] = (min(xs), min(ys), max(xs), max(ys))
+    return boxes
+
+
+def _extent(plan):
+    points = [p for w in plan["walls"] for p in w["axis"]] + [p for r in plan["rooms"] for p in r["polygon"]]
+    points = points or plan["slab"]["outline"]
+    xs, ys = zip(*points)
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def plan_image(plan, drawing=None, bbox=None, size=1500, highlight=None, _lines=None) -> bytes:
+    """PNG of the plan. bbox crops to one place (a margin is added); highlight outlines one element."""
+    x1, y1, x2, y2 = bbox or _extent(plan)
+    pad = config.REVIEW_CROP_MARGIN if bbox else config.REVIEW_PLAN_MARGIN
+    x1, y1, x2, y2 = x1 - pad, y1 - pad, x2 + pad, y2 + pad
+    width, height = max(x2 - x1, 0.1), max(y2 - y1, 0.1)
+    scale = size / 100 / max(width, height)
+    fig, ax = plt.subplots(figsize=(max(width * scale, 2), max(height * scale, 2)))
+
+    lines = _lines if _lines is not None else _line_array(drawing)
+    if len(lines):
+        mid_x, mid_y = (lines[:, 0] + lines[:, 2]) / 2, (lines[:, 1] + lines[:, 3]) / 2
+        near = lines[(mid_x > x1 - 2) & (mid_x < x2 + 2) & (mid_y > y1 - 2) & (mid_y < y2 + 2)]
+        ax.add_collection(LineCollection(near.reshape(-1, 2, 2), colors="#b8b8b8", linewidths=0.4 if bbox else 0.25))
+
+    small = max(5, min(9, 60 / max(width, height) * 4)) if not bbox else 7
+    for room in plan["rooms"]:
+        xs, ys = zip(*room["polygon"])
+        ax.fill(xs, ys, color=HEX[level(room["confidence"])], alpha=0.25, linewidth=0)
+        if not room["name"].startswith("Unnamed") or bbox:
+            ax.text(sum(xs) / len(xs), sum(ys) / len(ys), f"{room['name'][:28]}\n{room['area_m2']:.1f} m2",
+                    fontsize=small, ha="center", va="center", clip_on=True)
+    walls = {w["id"]: w for w in plan["walls"]}
+    for wall in plan["walls"]:
+        xs, ys = zip(*_strip(wall["axis"], max(wall["thickness_m"], 0.08)))
+        ax.fill(xs, ys, color=HEX[level(wall["confidence"])], linewidth=0)
+    for opening in plan["openings"]:
+        wall = walls[opening["wall_id"]]
+        (ax1, ay1), (ax2, ay2) = wall["axis"]
+        length = math.hypot(ax2 - ax1, ay2 - ay1) or 1.0
+        ux, uy, half = (ax2 - ax1) / length, (ay2 - ay1) / length, opening["width_m"] / 2
+        cx, cy = opening["center"]
+        span = [[cx - ux * half, cy - uy * half], [cx + ux * half, cy + uy * half]]
+        xs, ys = zip(*_strip(span, wall["thickness_m"] + 0.12))
+        ax.fill(xs, ys, facecolor="white", edgecolor="black", linewidth=1.0)
+        if bbox and opening["tag"]:
+            ax.text(cx, cy, opening["tag"], fontsize=7, ha="center", va="center", clip_on=True)
+    if highlight:
+        hx1, hy1, hx2, hy2 = highlight
+        ax.plot([hx1, hx2, hx2, hx1, hx1], [hy1, hy1, hy2, hy2, hy1], color="#1144cc", linewidth=1.6, linestyle="--")
+
+    ax.set_xlim(x1, x2)
+    ax.set_ylim(y1, y2)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.subplots_adjust(0, 0, 1, 1)
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=100, facecolor="white")
+    plt.close(fig)
+    return buffer.getvalue()
+
+
+def _line_array(drawing):
+    if drawing is None or not drawing.segments:
+        return np.empty((0, 4))
+    return np.array([(s.x1, s.y1, s.x2, s.y2) for s in drawing.segments])
+
+
+def _ifc_ids(ifc_path, source_file) -> dict:
+    """Plan element id -> IFC GlobalId. A door wins over the opening it fills."""
+    if not ifc_path:
+        return {}
+    import ifcopenshell
+    import ifcopenshell.util.element as element
+
+    ids = {}
+    model = ifcopenshell.open(str(ifc_path))  # keep it alive: its entities die with it
+    for product in model.by_type("IfcProduct"):
+        trust = element.get_pset(product, "SECO_Trust") or {}
+        if trust.get("SourceFile") == source_file and trust.get("ElementId"):
+            if trust["ElementId"] not in ids or not product.is_a("IfcOpeningElement"):
+                ids[trust["ElementId"]] = product.GlobalId
+    return ids
+
+
+def _img(png: bytes, alt: str) -> str:
+    return f'<img alt="{html.escape(alt)}" src="data:image/png;base64,{base64.b64encode(png).decode("ascii")}">'
+
+
+def _defaults(plan) -> list[tuple[str, str, str]]:
+    storey, slab = plan["storey"], plan["slab"]
+    reasons = [f["reason"] for f in plan["flags"]]
+    doors = [o for o in plan["openings"] if o["kind"] == "door"]
+    default_doors = sum("door height is a default" in r for r in reasons)
+    rows = [("Storey height", f"{storey['height_m']:.2f} m",
+             "Storey height was not found on the drawing. A default was used." if storey["height_source"] == "default"
+             else "Given when the tool was run."),
+            ("Storey elevation", f"{storey['elevation_m']:+.2f} m",
+             next((r for r in reasons if r.startswith(("storey elevation", "no level text"))), "Given when the tool was run.")),
+            ("Slab thickness", f"{slab['thickness_m']:.2f} m", "Not shown on a plan. A default was used.")]
+    if doors:
+        rows.append(("Door height", f"{config.DEFAULT_DOOR_HEIGHT:.2f} m",
+                     f"Default used for {default_doors} of {len(doors)} doors; the others were read from notes on the drawing."))
+    if any(o["kind"] == "window" for o in plan["openings"]):
+        rows.append(("Window sill and height", f"{config.DEFAULT_WINDOW_SILL:.2f} m / {config.DEFAULT_WINDOW_HEIGHT:.2f} m",
+                     "Not shown on a plan. Defaults were used for every window."))
+    return rows
+
+
+STYLE = """
+body{font:16px/1.5 Segoe UI,Arial,sans-serif;color:#1c1c1c;max-width:1100px;margin:24px auto;padding:0 20px}
+h1{font-size:26px;margin:0 0 4px} h2{font-size:20px;margin:34px 0 10px;border-bottom:2px solid #ddd;padding-bottom:4px}
+.badge{display:inline-block;background:#c62828;color:#fff;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:.5px}
+.warn{background:#fff3cd;border-left:5px solid #e0a800;padding:8px 12px;margin:8px 0}
+table{border-collapse:collapse;width:100%;margin:6px 0} th,td{border:1px solid #ccc;padding:5px 9px;text-align:left;vertical-align:top}
+th{background:#f1f1f1} img{max-width:100%;border:1px solid #ccc}
+.dot{display:inline-block;width:13px;height:13px;border-radius:50%;margin:0 5px 0 14px;vertical-align:middle}
+.item{display:flex;gap:16px;border:1px solid #ccc;border-radius:6px;padding:10px;margin:10px 0}
+.item img{width:300px;flex:none} .item p{margin:0 0 6px} .meta{color:#555;font-size:14px}
+.pass{color:#1b7a33;font-weight:700} .fail{color:#c62828;font-weight:700} .na{color:#666}
+code{background:#f1f1f1;padding:1px 4px;border-radius:3px}
+"""
+
+
+def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
+    esc = html.escape
+    source, storey = plan["source"], plan["storey"]
+    elements = {e["id"]: e for kind in ("walls", "openings", "rooms") for e in plan[kind]}
+    boxes, ids, lines = _boxes(plan), _ifc_ids(ifc_path, source["file"]), _line_array(drawing)
+    levels = Counter(level(e["confidence"]) for e in elements.values())
+    kinds = Counter(o["kind"] for o in plan["openings"])
+    out = [f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Review: {esc(source['file'])}</title>",
+           f"<style>{STYLE}</style></head><body>",
+           f"<h1>{esc(source['file'])}</h1>",
+           f"<p><span class='badge'>TO BE VERIFIED</span> &nbsp; Storey <b>{esc(storey['name'])}</b> &middot; "
+           f"made on {date.today().isoformat()} &middot; this model was built by a program from the 2D drawing.</p>",
+           f"<p>{len(plan['walls'])} walls, {kinds['door']} doors, {kinds['window']} windows, "
+           f"{kinds['opening']} other openings, {len(plan['rooms'])} rooms.</p><p>"]
+    for name, label in (("high", "High confidence"), ("medium", "Medium"), ("low", "Low")):
+        out.append(f"<span class='dot' style='background:{HEX[name]}'></span>{label}: <b>{levels[name]}</b>")
+    out.append("</p>")
+
+    for flag in plan["flags"]:  # things about the whole file come first
+        if flag["element_id"] == "file" and flag["severity"] == "review" and flag["reason"].startswith(
+                ("layers carry no meaning", "units guessed", "no closed room", "no walls", "stopped after")):
+            out.append(f"<div class='warn'>{esc(flag['reason'][:1].upper() + flag['reason'][1:])}.</div>")
+
+    out += ["<h2>The plan</h2>", _img(plan_image(plan, _lines=lines), "plan coloured by confidence"),
+            "<p class='meta'>Walls are filled in their confidence colour, rooms are tinted, openings are white boxes. "
+            "Grey lines are the original drawing.</p>"]
+
+    out += ["<h2>Values that were assumed</h2>", "<table><tr><th>What</th><th>Value used</th><th>Where it comes from</th></tr>"]
+    out += [f"<tr><td>{esc(what)}</td><td>{esc(value)}</td><td>{esc(why)}</td></tr>" for what, value, why in _defaults(plan)]
+    out.append("</table>")
+
+    review = [f for f in plan["flags"] if f["severity"] == "review"]
+    rank = lambda f: elements[f["element_id"]]["confidence"] if f["element_id"] in elements else -1.0
+    review.sort(key=rank)
+    out.append(f"<h2>To review ({len(review)})</h2>")
+    if not review:
+        out.append("<p>Nothing was flagged.</p>")
+    crops = 0
+    for flag in review:
+        eid, picture = flag["element_id"], ""
+        if eid in boxes and crops < config.REVIEW_MAX_CROPS:
+            crops += 1
+            picture = _img(plan_image(plan, bbox=boxes[eid], size=config.REVIEW_CROP_PX, highlight=boxes[eid], _lines=lines),
+                           f"crop around {eid}")
+        meta = []
+        if eid in elements:
+            element = elements[eid]
+            meta.append(f"Element <code>{esc(eid)}</code>, confidence {element['confidence']:.2f} ({level(element['confidence'])})")
+            if eid in ids:
+                meta.append(f"IFC id <code>{esc(ids[eid])}</code>")
+            src = element.get("src") or {}
+            if src.get("layer") or src.get("handles"):
+                meta.append(f"Drawing layer {esc(src.get('layer') or '-')}, entities {esc(', '.join(src.get('handles', [])[:6]) or '-')}")
+        else:
+            meta.append({"file": "Whole drawing", "storey": "Storey", "slab": "Floor slab"}.get(eid, esc(eid)))
+        reason = flag["reason"][:1].upper() + flag["reason"][1:]
+        out.append('<div class="item">' + f"{picture}<div><p><b>{esc(reason)}.</b></p>"
+                   f"<p class='meta'>{'<br>'.join(meta)}</p></div></div>")
+
+    out += ["<h2>Rooms</h2>", "<table><tr><th>Room</th><th>Computed m2</th><th>Printed m2</th><th>Difference</th>"
+                              "<th>Confidence</th></tr>"]
+    for room in sorted(plan["rooms"], key=lambda r: r["confidence"]):
+        printed = room["area_printed_m2"]
+        diff = f"{(room['area_m2'] - printed) / printed * 100:+.1f} %" if printed else "-"
+        out.append(f"<tr><td>{esc(room['name'])}</td><td>{room['area_m2']:.1f}</td>"
+                   f"<td>{f'{printed:.1f}' if printed else '-'}</td><td>{diff}</td>"
+                   f"<td><span class='dot' style='margin-left:0;background:{HEX[level(room['confidence'])]}'></span>"
+                   f"{level(room['confidence'])}</td></tr>")
+    out.append("</table>")
+
+    out += ["<h2>Not in the model</h2>", "<p>Add these by hand if the control needs them.</p><ul>"]
+    out += [f"<li>{esc(item)}</li>" for item in NOT_MODELLED] + ["</ul>"]
+
+    unused = plan.get("unused_text", [])
+    if unused:
+        out += ["<h2>Text on the drawing that was not used</h2>",
+                f"<p>{plan['stats']['labels_unused']} texts matched nothing. They may hold information the program missed. "
+                f"The first {len(unused)}:</p>", "<p class='meta'>" + " &middot; ".join(esc(t) for t in unused) + "</p>"]
+
+    if checks:
+        out += ["<h2>Minimum requirements</h2>",
+                "<table><tr><th></th><th>Requirement</th><th>Result</th><th>Needed</th><th></th></tr>"]
+        for c in checks:
+            mark = {True: "<span class='pass'>pass</span>", False: "<span class='fail'>fail</span>",
+                    None: "<span class='na'>not applicable</span>"}[c["passed"]]
+            note = f"<br><span class='meta'>{esc(c['note'])}</span>" if c["note"] else ""
+            out.append(f"<tr><td>{c['id']}</td><td>{esc(c['name'])}{note}</td><td>{esc(str(c['value']))}</td>"
+                       f"<td>{esc(str(c['threshold']))}</td><td>{mark}</td></tr>")
+        out.append("</table>")
+
+    info = [f for f in plan["flags"] if f["severity"] == "info"]
+    if info:
+        out.append(f"<details><summary>Other notes ({len(info)})</summary><ul>")
+        out += [f"<li>{esc(f['reason'])}</li>" for f in info] + ["</ul></details>"]
+    out.append("</body></html>")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("\n".join(out), encoding="utf-8")
+    return out_path

@@ -755,6 +755,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                   "runtime_s": 0.0,
                   "llm_calls": int(roles["llm"]["provider"] != "none" and not roles["llm"]["cached"])},
     }
+    # for the review page: texts nothing used may hold information the rules missed
+    plan["unused_text"] = [label.text[:60] for label in drawing.labels
+                           if id(label) not in used_labels and len(label.text) >= 2][:config.REVIEW_MAX_UNUSED_TEXT]
     errors = validate_plan(plan)
     if errors:
         raise ValueError("extract produced an invalid plan: " + "; ".join(errors[:5]))

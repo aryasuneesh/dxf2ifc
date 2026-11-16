@@ -85,7 +85,7 @@ def plan_image(plan, drawing=None, bbox=None, size=1500, highlight=None, _lines=
     def seen(xs, ys):  # drawing what is outside the view is what makes crops slow
         return max(xs) >= x1 and min(xs) <= x2 and max(ys) >= y1 and min(ys) <= y2
 
-    small = max(5, min(9, 60 / max(width, height) * 4)) if not bbox else 7
+    small = max(7, min(16, 240 / max(width, height))) if not bbox else 7  # readable on small plans, not crowded on big ones
     for room in plan["rooms"]:
         xs, ys = zip(*room["polygon"])
         if not seen(xs, ys):

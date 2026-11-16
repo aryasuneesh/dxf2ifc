@@ -61,3 +61,41 @@ LLM_MIN_SEGMENTS = 20  # smaller unknown layers are not worth a question
 LLM_MAX_TEXT_SAMPLES = 40  # per request, over all layers
 LLM_TEXT_CUT = 30  # characters kept of a text sample
 LLM_TEXT_SKIP_OVER = 40  # longer texts are free-form notes: never sent
+
+# --- extract (section 05) ---
+ANGLE_TOL = 2.0  # degrees, lines this close in direction count as parallel
+WALL_MIN_T, WALL_MAX_T = 0.05, 0.60  # m, distance between the two faces of a wall
+UNPAIRED_MIN_LEN = 1.0  # m, wall lines this long with no partner are reported
+MERGE_GAP = 0.02  # m, wall pieces closer than this are one wall
+GAP_MIN, GAP_MAX = 0.60, 2.00  # m, a gap of this size in a wall is an opening
+CORNER_REACH = 0.60  # m, a wall end this close to another wall is joined to it
+CONF_COLOUR_ONLY_CAP = 0.6  # walls and openings guessed from line weight never score higher
+CONF_DEFAULT_CAP = 0.5  # an element that uses a default value never scores higher
+WALL_MATCH_TOL = 0.10  # m, tolerance when comparing wall axes with a known answer
+
+DOOR_TAG_DIST = 1.5  # m, door tag to opening centre
+DOOR_SYMBOL_DIST = 1.0  # m, door symbol to opening centre
+DOOR_ARC_TOL = 0.15  # a swing arc's radius may differ from the gap width by this share
+DOOR_HEIGHT_DIST = 2.0  # m, height note to opening centre
+WINDOW_DIST = 0.5  # m, window-layer geometry to opening centre
+DEFAULT_WINDOW_SILL, DEFAULT_WINDOW_HEIGHT = 0.90, 1.20  # m, flagged when used
+
+ROOM_WORDS = (r"bureau|salle|wc|cuisine|chambre|couloir|hall|local|circulation|sanitaire|"
+              r"nettoyage|archive|r[ée]union|stockage|d[ée]p[oô]t|s[ée]jour|"
+              r"b[uü]ro|zimmer|k[uü]che|flur|lager|raum|office|room|kitchen|corridor|storage")
+STOREY_WORDS = (r"niveau|(^|[^a-z])niv\.?\s?[+\-]?\d|[ée]tage|(^|[^a-z])rdc($|[^a-z])|rez[- ]de|sous-sol|"
+                r"erdgeschoss|obergeschoss|untergeschoss|(^|[^a-z])level\s")
+ROOM_NAME_DIST = 3.0  # a room name sits within this many text heights of its area
+RASTER_PX = 0.02  # m per pixel when filling rooms
+RASTER_MAX_SIDE = 6000  # px, larger plans use a coarser pixel
+RASTER_MARGIN = 1.0  # m of empty space around the walls
+SEED_SEARCH = 0.5  # m, how far to look for free space when a label sits on a wall
+ROOM_MIN_AREA = 1.0  # m2, smaller unlabelled enclosed spaces are ignored
+ROOM_SIMPLIFY = 0.03  # m, simplification of room outlines
+SLAB_CLOSE = 0.3  # m, gaps closed when outlining the slab
+EXTERNAL_DIST = 0.5  # m, a wall this close to the outline is external
+SINGLE_LINE_T = 0.10  # m, nominal thickness of a wall drawn as one line
+CONF_SINGLE_LINE = 0.3  # confidence of such a wall
+CLUSTER_REACH = 0.5  # m, walls this close belong to one group
+CLUSTER_PAD = 2.0  # m, groups within this distance of the main group's extent are kept
+FRAME_SPAN = 0.9  # a wall group spanning this share of the drawing both ways is the sheet frame

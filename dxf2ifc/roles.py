@@ -72,9 +72,10 @@ def build_prompt(drawing, unplaced: list[str], placed: dict) -> str:
     return "\n".join(lines)
 
 
-def _wall_filter(drawing, warnings: list) -> dict | None:
-    """Colour-only file: the longest layer, lines heavier than its most common weight."""
-    candidates = {name: stats for name, stats in drawing.layer_stats.items() if _segments(stats)}
+def _wall_filter(drawing, layers: dict, warnings: list) -> dict | None:
+    """Colour-only file: the longest layer of unknown role, lines heavier than its most common weight."""
+    candidates = {name: stats for name, stats in drawing.layer_stats.items()
+                  if _segments(stats) and layers[name]["role"] == "other"}
     if not candidates:
         warnings.append("no line work found, so no walls can be extracted")
         return None
@@ -135,5 +136,5 @@ def assign_roles(drawing, mappings_dir=None, cache_dir=None) -> dict:
     has_walls = any(entry["role"] == "wall" for entry in layers.values())
     return {"family": "layered" if has_walls else "colour_only",
             "layers": layers,
-            "wall_filter": None if has_walls else _wall_filter(drawing, warnings),
+            "wall_filter": None if has_walls else _wall_filter(drawing, layers, warnings),
             "llm": used, "warnings": warnings, "mapping_key": key}

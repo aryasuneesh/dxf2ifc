@@ -23,6 +23,7 @@ from .schema import validate_plan
 AREA_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*m\s?[2²]", re.IGNORECASE)
 DOOR_TAG_RE = re.compile(r"^P[.\-]?\d", re.IGNORECASE)
 LEVEL_RE = re.compile(r"^[+\-]\s?\d+[.,]\d{2}$")
+OUVERTURE_RE = re.compile(r"ouverture\s*:?\s*(\d{3})", re.IGNORECASE)
 HEIGHT_RE = re.compile(r"(?:ouverture|HL)\s*:?\s*(\d{3})", re.IGNORECASE)
 STOREY_RE = re.compile(config.STOREY_WORDS, re.IGNORECASE)
 ROOM_RE = re.compile(rf"(^|[^a-zà-ü])({config.ROOM_WORDS})", re.IGNORECASE)
@@ -244,6 +245,140 @@ def _close_corners(walls):
                     wall.hi += best[1]
 
 
+# ---------------------------------------------------------------- door swings
+
+def _door_swings(drawing):
+    """Quarter circles of door size: true arcs, and polylines whose points lie on a circle.
+
+    PDF exports cut one swing into two or more polylines, so pieces sharing a centre are joined.
+    Returns [{"hinge": (x, y), "ends": [(x, y), (x, y)], "r": radius, "handle": str}].
+    """
+    pieces = []  # (cx, cy, r, sweep in degrees, [end points], handle)
+    for a in drawing.arcs:
+        if config.SWING_R_MIN <= a.r <= config.SWING_R_MAX:
+            ends = [(a.cx + a.r * math.cos(math.radians(d)), a.cy + a.r * math.sin(math.radians(d)))
+                    for d in (a.a0, a.a1)]
+            pieces.append((a.cx, a.cy, a.r, (a.a1 - a.a0) % 360, ends, a.handle))
+    chains = defaultdict(list)
+    for seg in drawing.segments:
+        if seg.poly_id and not seg.closed:
+            chains[seg.poly_id].append(seg)
+    for segs in chains.values():
+        if len(segs) < config.SWING_MIN_EDGES:
+            continue
+        pts = np.array([(segs[0].x1, segs[0].y1)] + [(seg.x2, seg.y2) for seg in segs])
+        if np.ptp(pts, axis=0).max() > 2 * config.SWING_R_MAX:
+            continue
+        (p, q, c0), *_ = np.linalg.lstsq(np.c_[pts, np.ones(len(pts))], -(pts ** 2).sum(axis=1), rcond=None)
+        cx, cy = -p / 2, -q / 2
+        r2 = cx * cx + cy * cy - c0
+        if r2 <= 0 or not config.SWING_R_MIN <= math.sqrt(r2) <= config.SWING_R_MAX:
+            continue
+        r = math.sqrt(r2)
+        if np.abs(np.hypot(pts[:, 0] - cx, pts[:, 1] - cy) - r).max() > config.SWING_FIT_TOL:
+            continue
+        sweep = math.degrees(sum(seg.length for seg in segs) / r)
+        pieces.append((cx, cy, r, sweep, [tuple(pts[0]), tuple(pts[-1])], segs[0].handle))
+
+    joined = []  # pieces around one centre
+    for cx, cy, r, sweep, ends, handle in pieces:
+        for group in joined:
+            if math.dist((cx, cy), group["hinge"]) <= config.SWING_JOIN_TOL and abs(r - group["r"]) <= config.SWING_JOIN_TOL:
+                group["sweep"] += sweep
+                group["points"] += ends
+                break
+        else:
+            joined.append({"hinge": (float(cx), float(cy)), "r": float(r), "sweep": sweep,
+                           "points": list(ends), "handle": handle})
+    swings = []
+    for group in joined:
+        if config.SWING_SWEEP[0] <= group["sweep"] <= config.SWING_SWEEP[1]:
+            pts = group["points"]  # the two outermost points are the ends of the whole swing
+            a, b = max(((u, v) for u in pts for v in pts), key=lambda pair: math.dist(*pair))
+            swings.append({"hinge": group["hinge"], "ends": [tuple(map(float, a)), tuple(map(float, b))],
+                           "r": group["r"], "handle": group["handle"]})
+    return swings
+
+
+def _host_wall(walls, hinge, end):
+    """The wall a door from hinge to end sits in: parallel, on the same line, touching or covering it."""
+    length = math.dist(hinge, end)
+    vx, vy = (end[0] - hinge[0]) / length, (end[1] - hinge[1]) / length
+    mx, my = (hinge[0] + end[0]) / 2, (hinge[1] + end[1]) / 2
+    best = None
+    for wall in walls:
+        if abs(wall.ux * vx + wall.uy * vy) < math.cos(math.radians(config.SWING_PARALLEL_DEG)):
+            continue
+        off = abs(-wall.uy * mx + wall.ux * my - wall.c)
+        a, b = sorted(wall.ux * x + wall.uy * y for x, y in (hinge, end))
+        apart = max(wall.lo - b, a - wall.hi, 0.0)
+        if off <= wall.t / 2 + config.SWING_WALL_DIST and apart <= config.SWING_WALL_REACH:
+            if best is None or (off, apart) < best[0]:
+                best = ((off, apart), wall, a, b)
+    return best
+
+
+def _place_swings(swings, walls, gaps, drawing):
+    """Turn each door swing into an opening in a wall, unless a gap already stands for that door.
+
+    The host wall is stretched across the door, so a doorway drawn without a break still closes
+    the room. A swing with no wall beside it gets a short thin wall of its own. Returns how many
+    swings could not be placed.
+    """
+    lines = np.array([(seg.x1, seg.y1, seg.x2, seg.y2) for seg in drawing.segments]).reshape(-1, 4)
+    tol = config.SWING_LEAF_TOL
+
+    def leaf_at(hinge, end):  # a drawn line from the hinge to this end of the swing
+        a_h = np.hypot(lines[:, 0] - hinge[0], lines[:, 1] - hinge[1]) < tol
+        b_h = np.hypot(lines[:, 2] - hinge[0], lines[:, 3] - hinge[1]) < tol
+        a_e = np.hypot(lines[:, 0] - end[0], lines[:, 1] - end[1]) < tol
+        b_e = np.hypot(lines[:, 2] - end[0], lines[:, 3] - end[1]) < tol
+        return bool((a_h & b_e | b_h & a_e).any())
+
+    wall_gaps = list(gaps)  # only gaps found in the walls can absorb a swing
+    unplaced = 0
+    for swing in swings:
+        hinge, r = swing["hinge"], swing["r"]
+        mids = [((hinge[0] + e[0]) / 2, (hinge[1] + e[1]) / 2) for e in swing["ends"]]
+        hosts = [_host_wall(walls, hinge, end) for end in swing["ends"]]
+        closed = None
+        if bool(hosts[0]) != bool(hosts[1]):  # only one end lies along a wall: that is the closed door
+            closed = 0 if hosts[0] else 1
+        else:  # walls do not decide: the drawn leaf marks the open position
+            leaves = [leaf_at(hinge, end) for end in swing["ends"]]
+            if leaves[0] != leaves[1]:
+                closed = 1 if leaves[0] else 0
+            elif hosts[0] and hosts[1]:
+                closed = 0 if hosts[0][0] <= hosts[1][0] else 1
+
+        # a gap in the wall at this spot already is this door (one gap can hold both leaves of a double door)
+        spots = mids if closed is None else [mids[closed]]
+        same = [g for g in wall_gaps if any(
+            math.dist(m, g["wall"].point(g["along"])) <= g["width"] / 2 + config.SWING_GAP_SLACK for m in spots)]
+        if same:
+            same[0]["symbols"].append(swing["handle"])
+            continue
+        if closed is None:
+            unplaced += 1
+            continue
+
+        end, host = swing["ends"][closed], hosts[closed]
+        if host:
+            _, wall, a, b = host
+            wall.lo, wall.hi = min(wall.lo, a), max(wall.hi, b)
+        else:  # free-standing door: give it a thin wall to sit in
+            vx, vy = (end[0] - hinge[0]) / r, (end[1] - hinge[1]) / r
+            if vx < 0 or (abs(vx) < 1e-9 and vy < 0):
+                vx, vy = -vx, -vy
+            a, b = sorted(vx * x + vy * y for x, y in (hinge, end))
+            wall = _Wall(vx, vy, -vy * hinge[0] + vx * hinge[1], a, b, config.SINGLE_LINE_T,
+                         [swing["handle"]], "", config.CONF_SINGLE_LINE, "door_stub")
+            walls.append(wall)
+        gaps.append({"wall": wall, "along": (a + b) / 2, "width": b - a, "origin": "swing",
+                     "symbols": [swing["handle"]]})
+    return unplaced
+
+
 # ---------------------------------------------------------------- openings
 
 def _classify_openings(gaps, drawing, roles, family, used_labels, flags):
@@ -253,10 +388,12 @@ def _classify_openings(gaps, drawing, roles, family, used_labels, flags):
                     if role.get(b.layer) == "door" or rule_role(b.name) == "door"]
     window_things = [((s.x1 + s.x2) / 2, (s.y1 + s.y2) / 2, s.handle) for s in drawing.segments if role.get(s.layer) == "window"]
     window_things += [(b.x, b.y, b.handle) for b in drawing.blockrefs if role.get(b.layer) == "window"]
-    heights = [(label, int(m.group(1)) / 100) for label in drawing.labels if (m := HEIGHT_RE.search(label.text))]
+    # "HL: 300 (ouverture: 230, ...)": the opening is the door, HL includes the panel above it
+    heights = [(label, int(m.group(1)) / 100, rank) for label in drawing.labels
+               for rank, pattern in enumerate((OUVERTURE_RE, HEIGHT_RE)) if (m := pattern.search(label.text))]
 
-    openings = [{"wall": wall, "center": wall.point(along), "width": width, "tag": None, "handles": []}
-                for wall, along, width in gaps]
+    openings = [{"wall": g["wall"], "center": g["wall"].point(g["along"]), "width": g["width"], "tag": None,
+                 "handles": [], "origin": g["origin"], "swings": g["symbols"]} for g in gaps]
 
     tags = []  # (text, centre, handles); tags glued into one label are taken apart again
     for label in drawing.labels:
@@ -290,12 +427,12 @@ def _classify_openings(gaps, drawing, roles, family, used_labels, flags):
     result = []
     for o in openings:
         center, width = o["center"], o["width"]
-        symbols = near(door_things, center, config.DOOR_SYMBOL_DIST)
-        symbols += [a.handle for a in drawing.arcs if abs(a.r - width) <= config.DOOR_ARC_TOL * width
-                    and math.dist((a.cx, a.cy), center) <= config.DOOR_SYMBOL_DIST]
+        symbols = near(door_things, center, config.DOOR_SYMBOL_DIST) + o["swings"]
         windows = near(window_things, center, config.WINDOW_DIST)
         sill, default_height = 0.0, True
-        if o["tag"] and symbols:
+        if o["origin"] == "swing":
+            kind, conf, rule = ("door", 0.85, "swing+tag") if o["tag"] else ("door", 0.70, "swing")
+        elif o["tag"] and symbols:
             kind, conf, rule = "door", 0.90, "gap+tag+symbol"
         elif o["tag"]:
             kind, conf, rule = "door", 0.85, "gap+tag"
@@ -310,10 +447,10 @@ def _classify_openings(gaps, drawing, roles, family, used_labels, flags):
         if kind == "window":
             sill, height = config.DEFAULT_WINDOW_SILL, config.DEFAULT_WINDOW_HEIGHT
         else:
-            close = [(math.dist(_center(label), center), value, label) for label, value in heights]
-            close = [item for item in close if item[0] <= config.DOOR_HEIGHT_DIST]
+            close = [(rank, math.dist(_center(label), center), value, label) for label, value, rank in heights]
+            close = [item for item in close if item[1] <= config.DOOR_HEIGHT_DIST]
             if close:
-                _, height, label = min(close, key=lambda item: item[0])
+                _, _, height, label = min(close, key=lambda item: item[:2])
                 used_labels.add(id(label))
                 default_height = False
         if default_height:
@@ -541,8 +678,13 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
     ys = [v for seg in drawing.segments for v in (seg.y1, seg.y2)] or [0.0]
     walls, dropped = _main_building(walls, (min(xs), min(ys), max(xs), max(ys)))
     kept = {id(w) for w in walls}
-    gaps = [gap for gap in gaps if id(gap[0]) in kept]
+    gaps = [{"wall": wall, "along": along, "width": width, "origin": "gap", "symbols": []}
+            for wall, along, width in gaps if id(wall) in kept]
     explained = sum((w.hi - w.lo) * (2 if w.rule == "parallel_pair" else 1) for w in walls)
+    unplaced = _place_swings(_door_swings(drawing), walls, gaps, drawing) if walls else 0
+    if unplaced:
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"{unplaced} door swings could not be tied to a wall and were left out"})
     _close_corners(walls)
     if not walls:
         flags.append({"element_id": "file", "severity": "review", "reason": "no walls found"})

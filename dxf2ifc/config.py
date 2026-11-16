@@ -99,3 +99,15 @@ CONF_SINGLE_LINE = 0.3  # confidence of such a wall
 CLUSTER_REACH = 0.5  # m, walls this close belong to one group
 CLUSTER_PAD = 2.0  # m, groups within this distance of the main group's extent are kept
 FRAME_SPAN = 0.9  # a wall group spanning this share of the drawing both ways is the sheet frame
+
+# door swings (quarter circles)
+SWING_R_MIN, SWING_R_MAX = 0.5, 1.4  # m, radius of a door swing = door leaf width
+SWING_SWEEP = (40, 100)  # degrees; doors are drawn open at 45 or 90
+SWING_MIN_EDGES = 4  # a polyline needs this many edges to be tested as an arc
+SWING_FIT_TOL = 0.03  # m, how far polyline points may lie off the fitted circle
+SWING_JOIN_TOL = 0.05  # m, arc pieces with centres and radii this close are one swing
+SWING_GAP_SLACK = 0.2  # m, a closed door this close to a wall gap's span is that gap's door
+SWING_PARALLEL_DEG = 15  # a door lies along its wall within this angle
+SWING_WALL_DIST = 0.25  # m, door line to wall face
+SWING_WALL_REACH = 0.4  # m, door may start this far beyond the end of its wall
+SWING_LEAF_TOL = 0.12  # m, a drawn leaf runs from the hinge to one end of the swing

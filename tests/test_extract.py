@@ -182,3 +182,46 @@ def test_glued_door_tags_are_separated(tmp_path):
     plan, _ = run(tmp_path, edit=glue)
     assert sorted(o["tag"] for o in plan["openings"]) == ["P.01.01", "P.01.02"]
     assert any("door tag without opening: P.01.09" in f["reason"] for f in plan["flags"])
+
+
+@pytest.mark.parametrize("variant", [{}, {"colour_only": True}], ids=["block_arc", "polyline_halves"])
+def test_door_in_wall_drawn_without_a_gap(tmp_path, variant):
+    def fill_partition_gap(msp):  # the partition runs through the doorway; only the swing shows the door
+        for x in (5.95, 6.05):
+            if variant:
+                msp.add_lwpolyline([(x, 1.55), (x, 2.45)], dxfattribs={"layer": "A-CONTOUR", "lineweight": 9})
+            else:
+                msp.add_line((x, 1.55), (x, 2.45), dxfattribs={"layer": "MUR"})
+
+    plan, truth = run(tmp_path, edit=fill_partition_gap, **variant)
+    assert len(plan["openings"]) == 2
+    door = min(plan["openings"], key=lambda o: math.dist(o["center"], (6.0, 2.0)))
+    assert math.dist(door["center"], (6.0, 2.0)) < 0.05
+    assert door["width_m"] == pytest.approx(0.90, abs=0.03)
+    assert door["kind"] == "door" and door["rule"] == "swing+tag" and door["tag"] == "P.01.01"
+    wall = next(w for w in plan["walls"] if w["id"] == door["wall_id"])
+    assert round(wall["thickness_m"], 2) == 0.10
+    assert {r["name"] for r in plan["rooms"]} == {"BUREAU 1", "BUREAU 2"}
+
+
+def test_free_standing_door_gets_its_own_thin_wall(tmp_path):
+    def add_door(msp):  # a swing in the middle of BUREAU 1 with no wall near it
+        msp.add_arc((2.0, 4.0), 0.8, 0, 90, dxfattribs={"layer": "PORTE"})
+        msp.add_line((2.0, 4.0), (2.8, 4.0), dxfattribs={"layer": "PORTE"})
+
+    plan, _ = run(tmp_path, edit=add_door)
+    assert len(plan["openings"]) == 3
+    door = min(plan["openings"], key=lambda o: math.dist(o["center"], (2.0, 4.4)))
+    assert door["rule"] == "swing" and door["width_m"] == pytest.approx(0.8, abs=0.02)
+    stub = next(w for w in plan["walls"] if w["id"] == door["wall_id"])
+    assert stub["rule"] == "door_stub" and stub["confidence"] <= 0.3
+
+
+def test_opening_height_prefers_the_door_over_the_panel_above(tmp_path):
+    def add_note(msp):
+        msp.add_text("HL : 300", dxfattribs={"layer": "TEXTE", "height": 0.15, "insert": (4.6, 1.6)})
+        msp.add_text("(ouverture : 230,", dxfattribs={"layer": "TEXTE", "height": 0.15, "insert": (4.6, 1.3)})
+
+    plan, _ = run(tmp_path, edit=add_note)
+    door = next(o for o in plan["openings"] if o["tag"] == "P.01.01")
+    assert door["height_m"] == 2.30 and door["confidence"] == 0.90

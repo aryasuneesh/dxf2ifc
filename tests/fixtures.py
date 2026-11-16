@@ -45,14 +45,12 @@ def _wall_lines():
     return [(*line, "wall", THICK) for line in lines]
 
 
-def _door_swing_lines(steps=8):
-    """Door leaf and swing drawn as straight pieces (how PDF exports show an arc)."""
+def _door_swing_halves(steps=4):
+    """The swing as two 45-degree polylines of straight pieces (how PDF exports show an arc)."""
     hx, hy, r = 6.0, 1.55, 0.9
-    pts = [(hx + r * math.cos(a), hy + r * math.sin(a))
-           for a in (math.radians(90 * i / steps) for i in range(steps + 1))]
-    lines = [(hx, hy, hx + r, hy, "door", THIN)]
-    lines += [(*pts[i], *pts[i + 1], "door", THIN) for i in range(steps)]
-    return lines
+    return [[(hx + r * math.cos(math.radians(start + 45 * i / steps)),
+              hy + r * math.sin(math.radians(start + 45 * i / steps))) for i in range(steps + 1)]
+            for start in (0, 45)]
 
 
 def _rect(x, y, w, h, key):
@@ -90,7 +88,10 @@ def make_house(path, units="m", colour_only=False, offset=(0, 0), xref_prefix=""
     lines = _wall_lines()
     lines.append((0.2, 5.5, 5.95, 5.5, "dim", THIN))  # dimension line
     if colour_only:
-        lines += _door_swing_lines()
+        lines.append((6.0, 1.55, 6.9, 1.55, "door", THIN))  # the open door leaf
+        for half in _door_swing_halves():
+            target.add_lwpolyline([pt(x, y) for x, y in half],
+                                  dxfattribs={"layer": layer("door"), "lineweight": THIN})
         for i in range(8):  # thin clutter, so the thin weight is the most common one
             lines += _rect(0.6 + 0.6 * i, 4.2, 0.4, 0.4, "furn")
     if noise:

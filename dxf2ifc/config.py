@@ -121,3 +121,12 @@ SPACE_TRANSPARENCY = 0.7  # rooms are see-through
 OPENING_OVERCUT = 0.10  # m, an opening is this much deeper than its wall so it cuts cleanly
 LEAF_THICKNESS = 0.05  # m, body of a door or window
 MAX_SOURCE_HANDLES = 20  # DXF handles listed per element
+
+# --- triage (section 02) ---
+TRIAGE_WALL = r"(^|[^a-z])murs?($|[^a-z])|cloison|voile|ma[cç]onnerie|w[aä]nd|mauer|(^|[^a-z])walls?($|[^a-z])"
+TRIAGE_OPENING = r"(^|[^a-z])portes?($|[^a-z])|t(ü|ue)r|door|fen[eê]tre|fenster|window"
+TRIAGE_SURVEY = r"topo|points|altitude|repere|borne|parcelle|cadastr|vermessung"
+TRIAGE_SECTION = r"coupe|schnitt|fa[cç]ade|pignon|terrassement"
+TRIAGE_REF_CODES = ("24-010", "010B68")  # project code of the reference IFC
+TRIAGE_PLAN_SCORE = 6  # files scoring this or more are counted as plan-like
+TRIAGE_THUMB_MAX_MB = 60  # larger files get no thumbnail

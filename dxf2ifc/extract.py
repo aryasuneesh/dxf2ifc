@@ -716,12 +716,19 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
 
     openings.sort(key=lambda o: tuple(round(v, 2) for v in o["center"]))
     plan_openings = []
+    defaulted = Counter("window" if o["kind"] == "window" else "door" for o in openings if o["default_height"])
+    doors_total = sum(o["kind"] != "window" for o in openings)
+    if defaulted["door"]:  # one line for all of them: a flag per door would bury the rest of the list
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"door height is a default ({config.DEFAULT_DOOR_HEIGHT:.2f} m) for "
+                                f"{defaulted['door']} of {doors_total} doors and openings"})
+    if defaulted["window"]:
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"window sill ({config.DEFAULT_WINDOW_SILL:.2f} m) and height "
+                                f"({config.DEFAULT_WINDOW_HEIGHT:.2f} m) are defaults for {defaulted['window']} windows"})
     for i, o in enumerate(openings):
         oid = f"o{i + 1}"
-        if o.pop("default_height"):
-            what = "window sill and height are defaults" if o["kind"] == "window" else \
-                f"door height is a default ({o['height_m']:.2f} m)"
-            flags.append({"element_id": oid, "severity": "review", "reason": what})
+        del o["default_height"]
         if o["kind"] == "opening":
             flags.append({"element_id": oid, "severity": "review",
                           "reason": f"gap of {o['width_m']:.2f} m in a wall with no door tag or symbol"})

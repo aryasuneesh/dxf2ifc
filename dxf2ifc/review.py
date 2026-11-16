@@ -28,6 +28,15 @@ NOT_MODELLED = ["Curved walls", "Columns and beams", "Stairs and ramps", "Roofs"
                 "Anything shown only on sections or elevations (true heights, level changes)"]
 
 
+LOW_REASONS = {
+    "single_line": "wall drawn as a single line; its thickness is a nominal value",
+    "door_stub": "door with no wall beside it; a short thin wall was added to hold it",
+    "enclosed_region": "closed space with no room label",
+    "gap_only": "gap in a wall with no door tag or symbol",
+    "flood_fill": "room area is far from the area printed on the plan",
+}
+
+
 def _strip(axis, thickness):
     (x1, y1), (x2, y2) = axis
     length = math.hypot(x2 - x1, y2 - y1) or 1.0
@@ -73,9 +82,14 @@ def plan_image(plan, drawing=None, bbox=None, size=1500, highlight=None, _lines=
         near = lines[(mid_x > x1 - 2) & (mid_x < x2 + 2) & (mid_y > y1 - 2) & (mid_y < y2 + 2)]
         ax.add_collection(LineCollection(near.reshape(-1, 2, 2), colors="#b8b8b8", linewidths=0.4 if bbox else 0.25))
 
+    def seen(xs, ys):  # drawing what is outside the view is what makes crops slow
+        return max(xs) >= x1 and min(xs) <= x2 and max(ys) >= y1 and min(ys) <= y2
+
     small = max(5, min(9, 60 / max(width, height) * 4)) if not bbox else 7
     for room in plan["rooms"]:
         xs, ys = zip(*room["polygon"])
+        if not seen(xs, ys):
+            continue
         ax.fill(xs, ys, color=HEX[level(room["confidence"])], alpha=0.25, linewidth=0)
         if not room["name"].startswith("Unnamed") or bbox:
             ax.text(sum(xs) / len(xs), sum(ys) / len(ys), f"{room['name'][:28]}\n{room['area_m2']:.1f} m2",
@@ -83,6 +97,8 @@ def plan_image(plan, drawing=None, bbox=None, size=1500, highlight=None, _lines=
     walls = {w["id"]: w for w in plan["walls"]}
     for wall in plan["walls"]:
         xs, ys = zip(*_strip(wall["axis"], max(wall["thickness_m"], 0.08)))
+        if not seen(xs, ys):
+            continue
         ax.fill(xs, ys, color=HEX[level(wall["confidence"])], linewidth=0)
     for opening in plan["openings"]:
         wall = walls[opening["wall_id"]]
@@ -90,7 +106,9 @@ def plan_image(plan, drawing=None, bbox=None, size=1500, highlight=None, _lines=
         length = math.hypot(ax2 - ax1, ay2 - ay1) or 1.0
         ux, uy, half = (ax2 - ax1) / length, (ay2 - ay1) / length, opening["width_m"] / 2
         cx, cy = opening["center"]
-        span = [[cx - ux * half, cy - uy * half], [cx + ux * half, cy + uy * half]]
+        if not seen((cx - half, cx + half), (cy - half, cy + half)):
+            continue
+        span =[[cx - ux * half, cy - uy * half], [cx + ux * half, cy + uy * half]]
         xs, ys = zip(*_strip(span, wall["thickness_m"] + 0.12))
         ax.fill(xs, ys, facecolor="white", edgecolor="black", linewidth=1.0)
         if bbox and opening["tag"]:
@@ -140,20 +158,20 @@ def _img(png: bytes, alt: str) -> str:
 def _defaults(plan) -> list[tuple[str, str, str]]:
     storey, slab = plan["storey"], plan["slab"]
     reasons = [f["reason"] for f in plan["flags"]]
-    doors = [o for o in plan["openings"] if o["kind"] == "door"]
-    default_doors = sum("door height is a default" in r for r in reasons)
     rows = [("Storey height", f"{storey['height_m']:.2f} m",
              "Storey height was not found on the drawing. A default was used." if storey["height_source"] == "default"
              else "Given when the tool was run."),
             ("Storey elevation", f"{storey['elevation_m']:+.2f} m",
              next((r for r in reasons if r.startswith(("storey elevation", "no level text"))), "Given when the tool was run.")),
             ("Slab thickness", f"{slab['thickness_m']:.2f} m", "Not shown on a plan. A default was used.")]
-    if doors:
+    door_note = next((r for r in reasons if r.startswith("door height is a default")), None)
+    if door_note:
         rows.append(("Door height", f"{config.DEFAULT_DOOR_HEIGHT:.2f} m",
-                     f"Default used for {default_doors} of {len(doors)} doors; the others were read from notes on the drawing."))
-    if any(o["kind"] == "window" for o in plan["openings"]):
+                     "Not found next to the door. Default used for "
+                     + (door_note.split(" for ", 1)[1] if " for " in door_note else "some doors") + "."))
+    if any(r.startswith("window sill") for r in reasons):
         rows.append(("Window sill and height", f"{config.DEFAULT_WINDOW_SILL:.2f} m / {config.DEFAULT_WINDOW_HEIGHT:.2f} m",
-                     "Not shown on a plan. Defaults were used for every window."))
+                     "Not shown on a plan. Defaults were used."))
     return rows
 
 
@@ -204,6 +222,11 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
     out.append("</table>")
 
     review = [f for f in plan["flags"] if f["severity"] == "review"]
+    flagged = {f["element_id"] for f in review}
+    for element in elements.values():  # low-confidence elements nobody flagged still need a look
+        if element["confidence"] < config.CONF_MEDIUM and element["id"] not in flagged:
+            review.append({"element_id": element["id"], "severity": "review",
+                           "reason": LOW_REASONS.get(element["rule"], f"low confidence ({element['rule']})")})
     rank = lambda f: elements[f["element_id"]]["confidence"] if f["element_id"] in elements else -1.0
     review.sort(key=rank)
     out.append(f"<h2>To review ({len(review)})</h2>")

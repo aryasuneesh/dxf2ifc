@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 
+import ezdxf
 import pytest
 
 from dxf2ifc.extract import extract
@@ -74,6 +75,9 @@ def test_tc38_room_off_its_printed_area(tmp_path):
 
 def test_tc39_review_page(tmp_path):
     make_house(tmp_path / "house.dxf", noise=True)
+    doc = ezdxf.readfile(tmp_path / "house.dxf")  # a glazed partition drawn as one line: a low-confidence wall
+    doc.modelspace().add_line((1.5, 0.2), (1.5, 5.8), dxfattribs={"layer": "MUR"})
+    doc.saveas(tmp_path / "house.dxf")
     drawing = load(tmp_path / "house.dxf")
     plan = extract(drawing, assign_roles(drawing, mappings_dir=tmp_path / "m", cache_dir=tmp_path / "c"))
     errors = write_ifc([plan], tmp_path / "model.ifc")
@@ -83,14 +87,18 @@ def test_tc39_review_page(tmp_path):
 
     assert "TO BE VERIFIED" in html and "house.dxf" in html and "NIVEAU +01" in html
     assert "<script" not in html and "http://" not in html and "https://" not in html  # works offline, runs nothing
-    assert html.count("data:image/png;base64,") >= 1 + 2  # the plan and a crop for each door
     review_flags = [f for f in plan["flags"] if f["severity"] == "review"]
-    assert html.count('class="item"') == len(review_flags)
+    low = [e for kind in ("walls", "openings", "rooms") for e in plan[kind] if e["confidence"] < 0.5]
+    assert len(low) >= 2  # the single-line wall and the unlabelled space beside it
+    flagged = {f["element_id"] for f in review_flags}
+    assert html.count('class="item"') == len(review_flags) + sum(e["id"] not in flagged for e in low)
+    assert html.count("data:image/png;base64,") == 1 + len(low)  # the plan, and a crop for each low element
+    assert "Wall drawn as a single line" in html and "Closed space with no room label" in html
+    assert "Default used for 2 of 2 doors and openings" in html
     assert "Storey height was not found on the drawing" in html
     assert "3.00 m" in html and "default" in html
     assert re.search(r"R1</td>.*?pass", html, re.S) and "Wall lines turned into walls" in html
-    guid = re.search(r"IFC id <code>([0-9A-Za-z_$]{22})</code>", html)
-    assert guid, "flagged doors show the id of their IFC element"
+    assert re.search(r"IFC id <code>([0-9A-Za-z_$]{22})</code>", html), "items show the id of their IFC element"
     assert "5.75" in html  # the dimension text nothing used is listed
     assert len(html) < 5_000_000
 

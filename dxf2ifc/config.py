@@ -111,3 +111,13 @@ SWING_PARALLEL_DEG = 15  # a door lies along its wall within this angle
 SWING_WALL_DIST = 0.25  # m, door line to wall face
 SWING_WALL_REACH = 0.4  # m, door may start this far beyond the end of its wall
 SWING_LEAF_TOL = 0.12  # m, a drawn leaf runs from the hinge to one end of the swing
+
+# --- IFC writer (section 06) ---
+import uuid as _uuid
+
+GUID_NAMESPACE = _uuid.UUID("5ec0b1a2-d2f1-4c0e-9a11-0d5f2a1c7e06")  # fixed, so reruns give the same GlobalIds
+CONFIDENCE_COLOURS = {"high": (0.2, 0.7, 0.3), "medium": (1.0, 0.6, 0.1), "low": (0.85, 0.2, 0.2)}
+SPACE_TRANSPARENCY = 0.7  # rooms are see-through
+OPENING_OVERCUT = 0.10  # m, an opening is this much deeper than its wall so it cuts cleanly
+LEAF_THICKNESS = 0.05  # m, body of a door or window
+MAX_SOURCE_HANDLES = 20  # DXF handles listed per element

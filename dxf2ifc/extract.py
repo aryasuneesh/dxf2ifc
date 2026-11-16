@@ -700,6 +700,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
 
     openings = _classify_openings(gaps, drawing, roles, family, used_labels, flags)
     rooms = _rooms(walls, _room_seeds(drawing, used_labels), used_labels, flags)
+    if walls and not rooms:
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": "no closed room found; this drawing may be an elevation, a section or a site plan"})
     storey = _storey(drawing, elevation, height, used_labels, flags)
     slab, boundary = _slab(drawing, walls, rooms, flags)
 

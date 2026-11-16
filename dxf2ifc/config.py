@@ -130,3 +130,6 @@ TRIAGE_SECTION = r"coupe|schnitt|fa[cç]ade|pignon|terrassement"
 TRIAGE_REF_CODES = ("24-010", "010B68")  # project code of the reference IFC
 TRIAGE_PLAN_SCORE = 6  # files scoring this or more are counted as plan-like
 TRIAGE_THUMB_MAX_MB = 60  # larger files get no thumbnail
+
+# --- batch runs over many files ---
+BATCH_MAX_MB = 25  # larger drawings are skipped in dataset-wide runs

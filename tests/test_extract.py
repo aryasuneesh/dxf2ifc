@@ -225,3 +225,14 @@ def test_opening_height_prefers_the_door_over_the_panel_above(tmp_path):
     plan, _ = run(tmp_path, edit=add_note)
     door = next(o for o in plan["openings"] if o["tag"] == "P.01.01")
     assert door["height_m"] == 2.30 and door["confidence"] == 0.90
+
+
+def test_drawing_without_rooms_is_called_out(tmp_path):
+    def keep_one_wall(msp):  # only the south wall is left: walls but nothing closed
+        for line in list(msp.query('LINE[layer=="MUR"]')):
+            if max(line.dxf.start.y, line.dxf.end.y) > 0.25:
+                msp.delete_entity(line)
+
+    plan, _ = run(tmp_path, edit=keep_one_wall)
+    assert plan["walls"] and plan["rooms"] == []
+    assert any("may be an elevation" in f["reason"] for f in plan["flags"])

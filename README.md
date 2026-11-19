@@ -22,12 +22,14 @@ Python 3.13 on Windows is what it was built and tested on.
 .venv\Scripts\python -m dxf2ifc run plan.dxf --out out\plan
 ```
 
-This writes four files into `out\plan`:
+This writes six files into `out\plan`:
 
 | File | What it is |
 |---|---|
 | `model.ifc` | The IFC4 model. Elements are coloured by confidence in any viewer. |
-| `review.html` | Open this first. The plan, the assumed values, the list of things to check. |
+| `model_ifc2x3.ifc` | The same model in IFC2X3, the format of SECO's reference models. |
+| `review.html` | Open this first. The plan, the assumed values, the list of things to check, each with a link to it in 3D. Testers mark items correct or wrong and leave feedback at the bottom. |
+| `viewer.html` | The model in 3D in the browser, coloured by confidence. Click an element for its IFC id, rule and source. `viewer.html#<GlobalId>` jumps to one element. A switch shows simulated room sensors bound to each room's id. |
 | `plan.json` | The same content as plain data. |
 | `roles.json` | What each drawing layer was taken to mean. |
 
@@ -46,6 +48,18 @@ Then open http://127.0.0.1:8000, choose a DXF, and press Convert. Everything sta
 ```bash
 .venv\Scripts\python -m dxf2ifc merge out\level1\plan.json out\level2\plan.json --out out\building.ifc
 ```
+
+This also writes `building_ifc2x3.ifc` and a 3D view `building.html`. The top storey gets a flat roof, marked as an assumption (no floor plan shows the roof).
+
+## User tests
+
+Testers use the review page from the try-it server; their answers land in `out\web\feedback.jsonl`.
+
+```bash
+.venv\Scripts\python -m dxf2ifc feedback out\web\feedback.jsonl
+```
+
+How to run a test and where to record it: `docs/USER_TESTS.md`.
 
 ## Other commands
 
@@ -101,8 +115,8 @@ No client drawing, and nothing derived from one, belongs in this repository. `ou
 
 1. **Normalise** (`normalize.py`): any DXF becomes segments and labels in metres; blocks are flattened.
 2. **Layer roles** (`roles.py`): decide which layers hold walls, doors, text and so on. If no layer is named for walls, walls are picked by line weight.
-3. **Extract** (`extract.py`): pairs of parallel lines become walls, gaps and door swings become openings, closed spaces become rooms named by the labels inside them.
-4. **Write** (`to_ifc.py`): the IFC file, with a `SECO_Trust` property set on every element.
-5. **Check and review** (`qa.py`, `review.py`): the minimum-requirements table and the review page.
+3. **Extract** (`extract.py`): pairs of parallel lines become walls, gaps and door swings become openings, closed spaces become rooms named by the labels inside them. Stairs come from stair layers or from runs of treads; fire-safety symbols (extinguishers, detectors, exit signs) from fire layers.
+4. **Write** (`to_ifc.py`): the IFC files, with a `SECO_Trust` property set on every element.
+5. **Check and review** (`qa.py`, `review.py`, `viewer.py`): the minimum-requirements table, the review page and the 3D view.
 
 Every threshold is in `dxf2ifc/config.py`. Known shortcuts are marked in the code with `# ponytail:`.

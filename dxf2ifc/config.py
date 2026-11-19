@@ -112,6 +112,19 @@ FLIGHT_JOIN = 0.6  # m, flights and landings this close are one stair
 CONF_STAIR_LAYER, CONF_STAIR_TREADS = 0.6, 0.5  # outline only: no steps, no rise
 MAX_TREAD_CANDIDATES = 50_000  # above this the tread search is skipped
 
+# fire-safety symbols (kickoff "welcome extra"): blocks or small clusters on fire layers
+FIRE_LAYER = (r"incendi|fire|brandm|brandschutz|feuerl|l[öo]sch|extinct|extingu|(^|[^a-z])ria($|[^a-z])|baes|"
+              r"pictogramme|rauchmelder|sprinkl")
+FIRE_KINDS = [  # first match on layer + block name wins
+    ("extinguisher", r"extinct|extingu|cylinder|l[öo]sch|(^|[^a-z])ria($|[^a-z])|hose|robinet|hydrant"),
+    ("detector", r"d[ée]tect|melder|smoke|rauch|sprinkl"),
+    ("exit_sign", r"exit|sortie|secours|baes|notausgang|pictogramme|assembly"),
+]
+FIRE_SYMBOL_MAX = 1.5  # m, a cluster larger than this is a pipe, a lane or a hatch, not a symbol
+FIRE_CLUSTER_REACH = 0.15  # m, lines this close are one symbol
+CONF_FIRE_BLOCK, CONF_FIRE_CLUSTER = 0.7, 0.5
+FIRE_MOUNT_HEIGHT = {"extinguisher": 1.0, "detector": None, "exit_sign": 2.2, "fire_equipment": 1.0}  # None: ceiling
+
 # door swings (quarter circles)
 SWING_R_MIN, SWING_R_MAX = 0.5, 1.4  # m, radius of a door swing = door leaf width
 SWING_SWEEP = (40, 100)  # degrees; doors are drawn open at 45 or 90

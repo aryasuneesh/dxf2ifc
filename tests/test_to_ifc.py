@@ -184,7 +184,10 @@ def test_stairs_and_roof_are_valid(tmp_path, schema):
     plan = copy.deepcopy(FIXTURE)
     plan["stairs"] = [{"id": "s1", "polygon": [[1, 1], [2.2, 1], [2.2, 3.5], [1, 3.5]], "confidence": 0.5,
                        "rule": "tread_run", "src": {"layer": "TRAITS", "handles": ["A1"]}}]
+    plan["fire"] = [{"id": "f1", "kind": "extinguisher", "position": [3, 4], "confidence": 0.7,
+                     "rule": "fire_block", "src": {"layer": "INCENDIE", "handles": ["B2"]}}]
     assert write_ifc([plan], tmp_path / "m.ifc", schema=schema, roof=True) == []
     ifc = ifcopenshell.open(str(tmp_path / "m.ifc"))
     assert len(ifc.by_type("IfcStair")) == 1 and len(ifc.by_type("IfcRoof")) == 1
     assert element.get_pset(ifc.by_type("IfcRoof")[0], "SECO_Trust")["Rule"] == "assumed_flat_roof"
+    assert [p.ObjectType for p in ifc.by_type("IfcBuildingElementProxy")] == ["Fire extinguisher"]

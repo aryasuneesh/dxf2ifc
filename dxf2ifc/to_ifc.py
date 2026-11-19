@@ -213,7 +213,22 @@ class _Writer:
             self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"], stair["src"])
             stairs.append(product)
 
-        contained = [product for product, _ in walls.values()] + fillings + [slab] + stairs
+        fire = []
+        for symbol in plan.get("fire", []):  # a 30 cm box where the symbol is; the type is in ObjectType
+            names = {"extinguisher": "Fire extinguisher", "detector": "Fire detector",
+                     "exit_sign": "Emergency exit sign", "fire_equipment": "Fire-safety equipment"}
+            product = self.root("IfcBuildingElementProxy", names[symbol["kind"]], *key(symbol))
+            product.ObjectType = names[symbol["kind"]]
+            mount = config.FIRE_MOUNT_HEIGHT[symbol["kind"]]
+            bottom = height - 0.4 if mount is None else mount
+            x, y = symbol["position"]
+            self.place(product, elevation)
+            self.solid(product, [(x - 0.15, y - 0.15), (x + 0.15, y - 0.15), (x + 0.15, y + 0.15), (x - 0.15, y + 0.15)],
+                       bottom, 0.3, symbol["confidence"])
+            self.trust(product, plan, symbol["id"], symbol["confidence"], symbol["rule"], symbol["src"])
+            fire.append(product)
+
+        contained = [product for product, _ in walls.values()] + fillings + [slab] + stairs + fire
         api.spatial.assign_container(f, products=contained, relating_structure=storey)
         if spaces:
             api.aggregate.assign_object(f, products=spaces, relating_object=storey)

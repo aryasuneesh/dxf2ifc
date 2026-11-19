@@ -303,3 +303,18 @@ def test_stair_layer_outline(tmp_path):
 def test_no_stairs_in_plain_house(tmp_path):
     plan, _ = run(tmp_path)
     assert plan["stairs"] == []
+
+
+def test_fire_symbols_from_blocks_and_clusters(tmp_path):
+    def add_fire(msp):
+        doc = msp.doc
+        block = doc.blocks.new("EXTINCTEUR_6KG")
+        block.add_circle((0, 0), 0.15)
+        msp.add_blockref("EXTINCTEUR_6KG", (3.0, 4.0), dxfattribs={"layer": "8-PROTECTION INCENDIE"})
+        msp.add_circle((7.5, 3.0), 0.1, dxfattribs={"layer": "DETECTION INCENDIE"})  # a loose detector symbol
+        msp.add_line((1, 1), (9, 1), dxfattribs={"layer": "FIRE LANE"})  # long: a lane, not a symbol
+        msp.add_blockref("EXTINCTEUR_6KG", (60.0, 60.0), dxfattribs={"layer": "8-PROTECTION INCENDIE"})  # legend
+    plan, _ = run(tmp_path, edit=add_fire)
+    kinds = sorted((f["kind"], f["rule"]) for f in plan["fire"])
+    assert kinds == [("detector", "fire_cluster"), ("extinguisher", "fire_block")]
+    assert any("fire-safety symbols" in f["reason"] for f in plan["flags"])

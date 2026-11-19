@@ -18,7 +18,7 @@ from . import config
 KINDS = {"IfcWall": "walls", "IfcWallStandardCase": "walls", "IfcDoor": "openings", "IfcWindow": "openings",
          "IfcSpace": "rooms", "IfcSlab": "slabs", "IfcRoof": "slabs", "IfcStair": "stairs",
          "IfcSensor": "extras", "IfcDistributionControlElement": "extras", "IfcFireSuppressionTerminal": "extras",
-         "IfcAlarm": "extras", "IfcFlowTerminal": "extras", "IfcBuildingElementProxy": "extras"}
+         "IfcAlarm": "extras", "IfcFlowTerminal": "extras", "IfcBuildingElementProxy": "fire safety"}
 
 
 def elements(ifc_path) -> list[dict]:
@@ -41,7 +41,7 @@ def elements(ifc_path) -> list[dict]:
         container = element.get_container(product)
         result.append({
             "id": shape.guid, "type": product.is_a(), "kind": KINDS.get(product.is_a(), "other"),
-            "name": product.Name or "", "storey": container.Name if container else "",
+            "name": product.Name or "", "long_name": getattr(product, "LongName", None) or "", "storey": container.Name if container else "",
             "level": str(trust.get("ConfidenceLevel", "")).lower(), "confidence": trust.get("Confidence"),
             "status": trust.get("Status", ""), "rule": trust.get("Rule", ""),
             "source": f"{trust.get('SourceFile', '')} / {trust.get('SourceLayer', '')}".strip(" /"),

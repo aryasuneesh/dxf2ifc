@@ -26,6 +26,7 @@ LEVEL_RE = re.compile(r"^[+\-]\s?\d+[.,]\d{2}$")
 OUVERTURE_RE = re.compile(r"ouverture\s*:?\s*(\d{3})", re.IGNORECASE)
 HEIGHT_RE = re.compile(r"(?:ouverture|HL)\s*:?\s*(\d{3})", re.IGNORECASE)
 STOREY_RE = re.compile(config.STOREY_WORDS, re.IGNORECASE)
+FIRE_RE = re.compile(config.FIRE_LAYER, re.IGNORECASE)
 ROOM_RE = re.compile(rf"(^|[^a-zà-ü])({config.ROOM_WORDS})", re.IGNORECASE)
 
 
@@ -687,6 +688,49 @@ def _stairs(drawing, roles, flags):
     return stairs
 
 
+# ---------------------------------------------------------------- fire safety
+
+def _fire_kind(*names):
+    text = " ".join(names)
+    return next((kind for kind, pattern in config.FIRE_KINDS if re.search(pattern, text, re.IGNORECASE)), "fire_equipment")
+
+
+def _fire_symbols(drawing, building, flags):
+    """Extinguishers, detectors and exit signs: one per block, or per small line cluster, on a fire layer.
+    Only symbols inside the building's extent count; legends and title blocks sit outside it."""
+    x1, y1, x2, y2 = building
+    inside = lambda x, y: x1 <= x <= x2 and y1 <= y <= y2
+    found = []  # (kind, x, y, confidence, rule, layer, handles)
+    for ref in drawing.blockrefs:
+        if (FIRE_RE.search(ref.layer) or FIRE_RE.search(ref.name)) and inside(ref.x, ref.y):
+            found.append((_fire_kind(ref.layer, ref.name), ref.x, ref.y, config.CONF_FIRE_BLOCK, "fire_block",
+                          ref.layer, [ref.handle]))
+    from_blocks = {layer for *_, layer, _ in found}
+    fire_layer = lambda item: item.block is None and FIRE_RE.search(item.layer) and item.layer not in from_blocks
+    loose = [(LineString([(g.x1, g.y1), (g.x2, g.y2)]), g) for g in drawing.segments if fire_layer(g)]
+    loose += [(Point(a.cx, a.cy).buffer(a.r).exterior, a) for a in drawing.arcs if fire_layer(a)]  # circles, arcs
+    if loose:
+        merged = unary_union([shape.buffer(config.FIRE_CLUSTER_REACH) for shape, _ in loose])
+        for shape in getattr(merged, "geoms", [merged]):
+            a1, b1, a2, b2 = shape.bounds
+            span = max(a2 - a1, b2 - b1) - 2 * config.FIRE_CLUSTER_REACH
+            cx, cy = (a1 + a2) / 2, (b1 + b2) / 2
+            if span <= config.FIRE_SYMBOL_MAX and inside(cx, cy):
+                parts = [g for line, g in loose if shape.contains(line.centroid)]
+                if parts:
+                    found.append((_fire_kind(parts[0].layer), cx, cy, config.CONF_FIRE_CLUSTER, "fire_cluster",
+                                  parts[0].layer, list(dict.fromkeys(g.handle for g in parts))))
+    symbols = [{"id": f"f{i + 1}", "kind": kind, "position": [round(x, 3), round(y, 3)], "confidence": conf,
+                "rule": rule, "src": {"layer": layer, "handles": handles}}
+               for i, (kind, x, y, conf, rule, layer, handles) in enumerate(sorted(found, key=lambda f: (f[1], f[2])))]
+    if symbols:
+        counts = Counter(s["kind"].replace("_", " ") for s in symbols)
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": "fire-safety symbols placed from their drawing symbol, position only: "
+                                + ", ".join(f"{n} {kind}" for kind, n in sorted(counts.items()))})
+    return symbols
+
+
 # ---------------------------------------------------------------- storey, slab
 
 def _storey(drawing, elevation, height, used_labels, flags):
@@ -841,6 +885,11 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                           "reason": f"room area {room['area_m2']} m2 differs from the printed {room['area_printed_m2']} m2"})
 
     stairs = _stairs(drawing, roles, flags) if walls else []
+    if walls:
+        corners = np.array([p for w in walls for p in w.corners()])
+        fire = _fire_symbols(drawing, (*corners.min(axis=0), *corners.max(axis=0)), flags)
+    else:
+        fire = []
     role_of = {entry["role"] for entry in roles["layers"].values()}
     for missing in sorted(role_of & {"column"}):
         flags.append({"element_id": "file", "severity": "info",
@@ -852,7 +901,7 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                    "scale_to_m": drawing.scale_to_m, "origin_offset": list(drawing.origin_offset), "family": family},
         "storey": storey, "walls": plan_walls, "openings": plan_openings,
         "rooms": [{"id": r["id"], **{k: v for k, v in r.items() if k != "id"}} for r in rooms],
-        "slab": slab, "stairs": stairs, "flags": flags,
+        "slab": slab, "stairs": stairs, "fire": fire, "flags": flags,
         "stats": {"wall_layer_length_m": round(sum(s.length for s, _ in candidates), 2),
                   "wall_explained_length_m": round(explained, 2),
                   "labels_total": len(drawing.labels),

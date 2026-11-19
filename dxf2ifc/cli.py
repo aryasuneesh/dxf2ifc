@@ -22,7 +22,7 @@ def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=N
     from .qa import check
     from .review import write_review
     from .roles import assign_roles
-    from .to_ifc import write_ifc
+    from .to_ifc import write_all
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -32,7 +32,7 @@ def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=N
         drawing.project = project
     roles = assign_roles(drawing)
     plan = extract(drawing, roles, elevation=elevation, height=height)
-    errors = write_ifc([plan], out_dir / "model.ifc")
+    errors = write_all([plan], out_dir / "model.ifc")
     plan["stats"]["runtime_s"] = round(time.perf_counter() - start, 1)
     checks = check([plan], out_dir / "model.ifc", runtime_s=plan["stats"]["runtime_s"], errors=errors)
     write_review(plan, checks, out_dir / "review.html", drawing=drawing, ifc_path=out_dir / "model.ifc")
@@ -62,7 +62,7 @@ def summary(plan, checks, out_dir) -> str:
 
 def merge(plan_paths, out_path) -> list[str]:
     """Several plan.json files (one per storey) into one building."""
-    from .to_ifc import write_ifc
+    from .to_ifc import write_all
 
     plans = sorted((json.loads(Path(p).read_text(encoding="utf-8")) for p in plan_paths),
                    key=lambda plan: plan["storey"]["elevation_m"])
@@ -70,7 +70,7 @@ def merge(plan_paths, out_path) -> list[str]:
         gap = round(upper["storey"]["elevation_m"] - lower["storey"]["elevation_m"], 2)
         if lower["storey"]["height_source"] == "default" and gap > 0:
             lower["storey"].update(height_m=gap, height_source="next_level")
-    return write_ifc(plans, out_path)
+    return write_all(plans, out_path)
 
 
 # ---------------------------------------------------------------- try-it page
@@ -101,10 +101,11 @@ document.getElementById("go").onclick = async () => {
   const links = document.getElementById("links");
   links.hidden = !reply.ok;
   if (reply.ok) links.innerHTML = `<a href="/out/${data.id}/review.html" target="_blank">Open the review page</a> &middot; ` +
-    `<a href="/out/${data.id}/model.ifc" download>Download the IFC</a> &middot; <a href="/out/${data.id}/plan.json" download>plan.json</a>`;
+    `<a href="/out/${data.id}/model.ifc" download>IFC4</a> &middot; <a href="/out/${data.id}/model_ifc2x3.ifc" download>IFC2X3</a> &middot; <a href="/out/${data.id}/plan.json" download>plan.json</a>`;
 };
 </script></body></html>"""
 SERVED = {"review.html": "text/html; charset=utf-8", "model.ifc": "application/octet-stream",
+          "model_ifc2x3.ifc": "application/octet-stream",
           "plan.json": "application/json", "roles.json": "application/json"}
 
 

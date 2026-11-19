@@ -7,6 +7,7 @@ Every body is an extruded outline in plan coordinates, lifted to the storey elev
 
 import math
 import uuid
+from pathlib import Path
 
 import ifcopenshell
 import ifcopenshell.api.aggregate
@@ -49,11 +50,11 @@ class _Ids:
 
 
 class _Writer:
-    def __init__(self, plans):
+    def __init__(self, plans, schema):
         self.plans = sorted(plans, key=lambda plan: plan["storey"]["elevation_m"])
         self.name = self.plans[0]["source"]["project"]
-        self.f = api.project.create_file(version=config.IFC_SCHEMA)
-        self.old = config.IFC_SCHEMA == "IFC2X3"
+        self.f = api.project.create_file(version=schema)
+        self.old = schema == "IFC2X3"
         self.ids = _Ids()
         self.builder = ShapeBuilder(self.f)
         f = self.f
@@ -63,6 +64,9 @@ class _Writer:
             application = api.owner.add_application(f)
             api.owner.settings.get_user = lambda ifc: user
             api.owner.settings.get_application = lambda ifc: application
+        else:  # a previous IFC2X3 run in this process must not leak its owner into this file
+            api.owner.settings.get_user = lambda ifc: None
+            api.owner.settings.get_application = lambda ifc: None
 
         self.project = self.root("IfcProject", self.name, "project")
         api.unit.assign_unit(f, units=[api.unit.add_si_unit(f, unit_type=kind)
@@ -226,9 +230,20 @@ def _strip(axis, thickness):
     return [(x1 + nx, y1 + ny), (x2 + nx, y2 + ny), (x2 - nx, y2 - ny), (x1 - nx, y1 - ny)]
 
 
-def write_ifc(plans: list[dict], out_path) -> list[str]:
+def write_ifc(plans: list[dict], out_path, schema=config.IFC_SCHEMA) -> list[str]:
     """Write one building, one storey per plan. Returns validation errors (empty when valid)."""
-    writer = _Writer(plans)
+    writer = _Writer(plans, schema)
     for plan in writer.plans:
         writer.storey(plan)
     return writer.finish(out_path)
+
+
+def write_all(plans: list[dict], out_path) -> list[str]:
+    """The main IFC (config.IFC_SCHEMA) plus one copy per extra schema, e.g. model_ifc2x3.ifc."""
+    import copy
+
+    errors = write_ifc(copy.deepcopy(plans), out_path)
+    for schema in config.IFC_EXTRA_SCHEMAS:
+        extra = Path(out_path).with_name(f"{Path(out_path).stem}_{schema.lower()}.ifc")
+        errors += [f"{schema}: {e}" for e in write_ifc(copy.deepcopy(plans), extra, schema)]
+    return errors

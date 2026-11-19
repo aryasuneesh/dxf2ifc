@@ -129,9 +129,8 @@ def test_ids_stay_unique_when_two_walls_share_their_source_lines(tmp_path):
     assert len(set(ids)) == len(ids)
 
 
-def test_tc35_ifc2x3(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "IFC_SCHEMA", "IFC2X3")
-    errors = write_ifc([copy.deepcopy(FIXTURE)], tmp_path / "old.ifc")
+def test_tc35_ifc2x3(tmp_path):
+    errors = write_ifc([copy.deepcopy(FIXTURE)], tmp_path / "old.ifc", schema="IFC2X3")
     assert errors == []
     ifc = ifcopenshell.open(str(tmp_path / "old.ifc"))
     assert ifc.schema == "IFC2X3" and len(ifc.by_type("IfcWall")) == 5
@@ -159,3 +158,13 @@ def test_extracted_plan_writes_a_valid_ifc(tmp_path, variant):
     assert len(ifc.by_type("IfcWall")) == 5 and len(ifc.by_type("IfcDoor")) == 2 and len(ifc.by_type("IfcSpace")) == 2
     site = ifc.by_type("IfcSite")[0]
     assert element.get_pset(site, "SECO_Georef")["SourceUnits"] == variant.get("units", "m")
+
+
+def test_both_schemas_are_written_and_valid(tmp_path):
+    from dxf2ifc.to_ifc import write_all
+    assert write_all([copy.deepcopy(FIXTURE)], tmp_path / "model.ifc") == []
+    assert ifcopenshell.open(tmp_path / "model.ifc").schema == "IFC4"
+    old = ifcopenshell.open(tmp_path / "model_ifc2x3.ifc")
+    assert old.schema == "IFC2X3" and len(old.by_type("IfcSpace")) == 2
+    # writing IFC4 again after IFC2X3 in the same process stays clean
+    assert write_all([copy.deepcopy(FIXTURE)], tmp_path / "again.ifc") == []

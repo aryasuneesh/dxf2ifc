@@ -1,6 +1,7 @@
 """Every threshold and default lives here. Sections add their own constants."""
 
-IFC_SCHEMA = "IFC4"  # reference file is IFC2X3; ask SECO which they want
+IFC_SCHEMA = "IFC4"  # the kickoff spec asks for IFC4
+IFC_EXTRA_SCHEMAS = ("IFC2X3",)  # also written, as model_ifc2x3.ifc: SECO's reference model is IFC2X3
 
 DEFAULT_STOREY_HEIGHT = 3.00  # m, flagged when used
 DEFAULT_SLAB_THICKNESS = 0.25  # m, flagged when used

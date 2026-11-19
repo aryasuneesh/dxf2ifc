@@ -8,7 +8,6 @@ import ifcopenshell.util.element as element
 import numpy as np
 import pytest
 
-from dxf2ifc import config
 from dxf2ifc.extract import extract
 from dxf2ifc.normalize import load
 from dxf2ifc.roles import assign_roles

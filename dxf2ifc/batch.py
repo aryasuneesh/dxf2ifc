@@ -17,7 +17,7 @@ from . import config
 
 FIELDS = ["path", "error", "seconds", "family", "units", "segments", "walls", "single_line_walls", "doors",
           "windows", "gaps", "rooms_named", "rooms_unnamed", "rooms_with_area", "area_within_3", "area_within_5",
-          "area_within_10", "coverage", "storey", "elevation", "review_flags"]
+          "area_within_10", "coverage", "storey", "elevation", "review_flags", "stairs", "fire"]
 
 
 def run_one(path) -> dict:
@@ -50,7 +50,8 @@ def run_one(path) -> dict:
         area_within_5=sum(d < 0.05 for d in checked), area_within_10=sum(d < 0.10 for d in checked),
         coverage=round(stats["wall_explained_length_m"] / stats["wall_layer_length_m"], 2) if stats["wall_layer_length_m"] else "",
         storey=plan["storey"]["name"][:40], elevation=plan["storey"]["elevation_m"],
-        review_flags=sum(f["severity"] == "review" for f in plan["flags"]))
+        review_flags=sum(f["severity"] == "review" for f in plan["flags"]),
+        stairs=len(plan["stairs"]), fire=len(plan["fire"]))
     return row
 
 

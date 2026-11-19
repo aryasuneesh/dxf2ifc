@@ -177,3 +177,14 @@ def test_viewer_page_carries_ids_and_confidence(tmp_path):
     ids = {w.GlobalId for w in ifcopenshell.open(tmp_path / "model.ifc").by_type("IfcWall")}
     assert shown >= len(ids) and all(i in page for i in ids)
     assert '"level":"high"' in page and "IfcOpeningElement" not in page
+
+
+@pytest.mark.parametrize("schema", ["IFC4", "IFC2X3"])
+def test_stairs_and_roof_are_valid(tmp_path, schema):
+    plan = copy.deepcopy(FIXTURE)
+    plan["stairs"] = [{"id": "s1", "polygon": [[1, 1], [2.2, 1], [2.2, 3.5], [1, 3.5]], "confidence": 0.5,
+                       "rule": "tread_run", "src": {"layer": "TRAITS", "handles": ["A1"]}}]
+    assert write_ifc([plan], tmp_path / "m.ifc", schema=schema, roof=True) == []
+    ifc = ifcopenshell.open(str(tmp_path / "m.ifc"))
+    assert len(ifc.by_type("IfcStair")) == 1 and len(ifc.by_type("IfcRoof")) == 1
+    assert element.get_pset(ifc.by_type("IfcRoof")[0], "SECO_Trust")["Rule"] == "assumed_flat_roof"

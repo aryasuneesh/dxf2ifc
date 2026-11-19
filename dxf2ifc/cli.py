@@ -73,7 +73,7 @@ def merge(plan_paths, out_path) -> list[str]:
         gap = round(upper["storey"]["elevation_m"] - lower["storey"]["elevation_m"], 2)
         if lower["storey"]["height_source"] == "default" and gap > 0:
             lower["storey"].update(height_m=gap, height_source="next_level")
-    errors = write_all(plans, out_path)
+    errors = write_all(plans, out_path, roof=True)  # the top storey gets an assumed flat roof
     if not errors:
         write_viewer(out_path, Path(out_path).with_suffix(".html"), title=plans[0]["source"]["project"])
     return errors

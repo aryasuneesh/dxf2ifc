@@ -17,6 +17,7 @@ OPENING = {"id": str, "kind": str, "wall_id": str, "center": list, "width_m": NU
            "confidence": NUM, "rule": str, "src": dict}
 ROOM = {"id": str, "name": str, "polygon": list, "area_m2": NUM,
         "area_printed_m2": (int, float, None), "confidence": NUM, "rule": str, "src": dict}
+STAIR = {"id": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 SLAB = {"outline": list, "thickness_m": NUM, "confidence": NUM, "rule": str}
 FLAG = {"element_id": str, "severity": str, "reason": str}
 STATS = {"wall_layer_length_m": NUM, "wall_explained_length_m": NUM,
@@ -101,6 +102,10 @@ def validate_plan(plan: dict) -> list[str]:
         where = f"rooms[{i}]"
         if _fields(room, ROOM, where, errors) and "polygon" in room:
             _points(room["polygon"], 3, f"{where}.polygon", errors)
+
+    for i, stair in enumerate(plan.get("stairs") or []):  # optional: plans from before 19 Nov have none
+        if _fields(stair, STAIR, f"stairs[{i}]", errors) and "polygon" in stair:
+            _points(stair["polygon"], 3, f"stairs[{i}].polygon", errors)
 
     if _fields(plan.get("slab"), SLAB, "slab", errors) and "outline" in plan["slab"]:
         _points(plan["slab"]["outline"], 3, "slab.outline", errors)

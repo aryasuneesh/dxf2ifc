@@ -88,6 +88,10 @@ def test_merge_two_storeys(tmp_path, capsys):
     heights = sorted(round(max(v[2] for v in _corners(wall)) - min(v[2] for v in _corners(wall)), 2)
                      for wall in ifc.by_type("IfcWall"))
     assert heights == [3.0] * 5 + [3.3] * 5  # the lower storey now reaches the upper one
+    roof = ifc.by_type("IfcRoof")
+    assert len(roof) == 1 and roof[0].ContainedInStructure[0].RelatingStructure.Elevation == 6.5
+    assert ifcopenshell.open(str(tmp_path / "building_ifc2x3.ifc")).by_type("IfcRoof")
+    assert (tmp_path / "building.html").is_file()  # the 3D view of the building
 
 
 def _corners(wall):

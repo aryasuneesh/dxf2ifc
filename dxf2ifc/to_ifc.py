@@ -56,6 +56,7 @@ class _Writer:
         self.f = api.project.create_file(version=schema)
         self.old = schema == "IFC2X3"
         self.ids = _Ids()
+        self.storeys = []  # in elevation order, as written
         self.builder = ShapeBuilder(self.f)
         f = self.f
         if self.old:  # IFC2X3 wants an owner history on every entity
@@ -137,6 +138,7 @@ class _Writer:
 
         storey = self.root("IfcBuildingStorey", info["name"], "storey", tag)
         storey.Elevation = float(elevation)
+        self.storeys.append(storey)
         api.aggregate.assign_object(f, products=[storey], relating_object=self.building)
         self.place(storey, elevation)
         self.trust(storey, plan, "storey", info["confidence"], f"height:{info['height_source']}")
@@ -201,10 +203,33 @@ class _Writer:
         self.pset(slab, "Pset_SlabCommon", {"IsExternal": False})
         self.trust(slab, plan, "slab", slab_info["confidence"], slab_info["rule"])
 
-        contained = [product for product, _ in walls.values()] + fillings + [slab]
+        stairs = []
+        for stair in plan.get("stairs", []):  # an outline block: the engineer sees where, not how
+            product = self.root("IfcStair", f"Stair {stair['id']} (outline)", *key(stair))
+            if self.old:
+                product.ShapeType = "NOTDEFINED"  # mandatory in IFC2X3
+            self.place(product, elevation)
+            self.solid(product, stair["polygon"], 0.0, height, stair["confidence"])
+            self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"], stair["src"])
+            stairs.append(product)
+
+        contained = [product for product, _ in walls.values()] + fillings + [slab] + stairs
         api.spatial.assign_container(f, products=contained, relating_structure=storey)
         if spaces:
             api.aggregate.assign_object(f, products=spaces, relating_object=storey)
+
+    def roof(self, plan):
+        """A flat roof over the top storey. No plan shows a roof, so it is an assumption, flagged as such."""
+        info, tag = plan["storey"], plan["source"]["project"]
+        roof = self.root("IfcRoof", "Roof (assumed flat)", "roof", tag)
+        if self.old:
+            roof.ShapeType = "FLAT_ROOF"
+        else:
+            roof.PredefinedType = "FLAT_ROOF"
+        self.place(roof, info["elevation_m"] + info["height_m"])
+        self.solid(roof, plan["slab"]["outline"], 0.0, config.DEFAULT_SLAB_THICKNESS, config.CONF_ROOF)
+        self.trust(roof, plan, "roof", config.CONF_ROOF, "assumed_flat_roof")
+        api.spatial.assign_container(self.f, products=[roof], relating_structure=self.storeys[-1])
 
     def finish(self, out_path):
         # relations and property sets get their ids from their order, which the input fixes
@@ -230,20 +255,23 @@ def _strip(axis, thickness):
     return [(x1 + nx, y1 + ny), (x2 + nx, y2 + ny), (x2 - nx, y2 - ny), (x1 - nx, y1 - ny)]
 
 
-def write_ifc(plans: list[dict], out_path, schema=config.IFC_SCHEMA) -> list[str]:
-    """Write one building, one storey per plan. Returns validation errors (empty when valid)."""
+def write_ifc(plans: list[dict], out_path, schema=config.IFC_SCHEMA, roof=False) -> list[str]:
+    """Write one building, one storey per plan, and a flat roof on top if asked.
+    Returns validation errors (empty when valid)."""
     writer = _Writer(plans, schema)
     for plan in writer.plans:
         writer.storey(plan)
+    if roof:
+        writer.roof(writer.plans[-1])
     return writer.finish(out_path)
 
 
-def write_all(plans: list[dict], out_path) -> list[str]:
+def write_all(plans: list[dict], out_path, roof=False) -> list[str]:
     """The main IFC (config.IFC_SCHEMA) plus one copy per extra schema, e.g. model_ifc2x3.ifc."""
     import copy
 
-    errors = write_ifc(copy.deepcopy(plans), out_path)
+    errors = write_ifc(copy.deepcopy(plans), out_path, roof=roof)
     for schema in config.IFC_EXTRA_SCHEMAS:
         extra = Path(out_path).with_name(f"{Path(out_path).stem}_{schema.lower()}.ifc")
-        errors += [f"{schema}: {e}" for e in write_ifc(copy.deepcopy(plans), extra, schema)]
+        errors += [f"{schema}: {e}" for e in write_ifc(copy.deepcopy(plans), extra, schema, roof)]
     return errors

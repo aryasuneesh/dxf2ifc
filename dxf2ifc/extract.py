@@ -614,6 +614,79 @@ def _rooms(walls, seeds, used_labels, flags, barriers=()):
     return rooms
 
 
+# ---------------------------------------------------------------- stairs
+
+def _tread_runs(segments):
+    """Runs of parallel lines of equal length, a step apart: the treads of a flight."""
+    bins = defaultdict(list)
+    for seg in segments:
+        angle = math.degrees(math.atan2(seg.y2 - seg.y1, seg.x2 - seg.x1)) % 180
+        bins[round(angle / config.ANGLE_TOL) % round(180 / config.ANGLE_TOL)].append(seg)
+    runs = []
+    for members in bins.values():
+        if len(members) < config.TREAD_MIN_COUNT:
+            continue
+        a = math.radians(statistics.median(math.degrees(math.atan2(s.y2 - s.y1, s.x2 - s.x1)) % 180 for s in members))
+        ux, uy = math.cos(a), math.sin(a)
+        lines = sorted(((-uy * (s.x1 + s.x2) / 2 + ux * (s.y1 + s.y2) / 2,
+                         min(ux * s.x1 + uy * s.y1, ux * s.x2 + uy * s.y2),
+                         max(ux * s.x1 + uy * s.y1, ux * s.x2 + uy * s.y2), s) for s in members),
+                       key=lambda line: line[:3])
+        used = set()
+        for i, (c, lo, hi, seg) in enumerate(lines):
+            if i in used:
+                continue
+            run, last = [i], (c, lo, hi)
+            for j in range(i + 1, len(lines)):
+                cj, loj, hij, _ = lines[j]
+                gap = cj - last[0]
+                if gap > config.TREAD_GAP_MAX:
+                    break
+                same = abs((hij - loj) - (last[2] - last[1])) <= config.TREAD_LEN_TOL * (last[2] - last[1])
+                overlap = min(hij, last[2]) - max(loj, last[1]) >= 0.8 * (last[2] - last[1])
+                if j not in used and gap >= config.TREAD_GAP_MIN and same and overlap:
+                    run.append(j)
+                    last = (cj, loj, hij)
+            if len(run) >= config.TREAD_MIN_COUNT:
+                used.update(run)
+                runs.append([lines[k][3] for k in run])
+    return runs
+
+
+def _stairs(drawing, roles, flags):
+    """Stair outlines, from stair layers or from tread runs. No steps or rise are modelled."""
+    stair_layers = {name for name, entry in roles["layers"].items() if entry["role"] == "stair"}
+    found = []  # (polygon, confidence, rule, segments)
+    on_layer = [s for s in drawing.segments if s.layer in stair_layers]
+    if on_layer:
+        merged = unary_union([LineString([(s.x1, s.y1), (s.x2, s.y2)]).buffer(config.STAIR_LAYER_REACH) for s in on_layer])
+        for shape in getattr(merged, "geoms", [merged]):
+            outline = shape.buffer(-config.STAIR_LAYER_REACH).minimum_rotated_rectangle
+            if outline.area >= config.STAIR_MIN_AREA:
+                parts = [s for s in on_layer if shape.contains(Point((s.x1 + s.x2) / 2, (s.y1 + s.y2) / 2))]
+                found.append((outline, config.CONF_STAIR_LAYER, "stair_layer", parts))
+    candidates = [s for s in drawing.segments if config.TREAD_LEN_MIN <= s.length <= config.TREAD_LEN_MAX]
+    if len(candidates) <= config.MAX_TREAD_CANDIDATES:
+        flights = [(unary_union([LineString([(s.x1, s.y1), (s.x2, s.y2)]) for s in run]).minimum_rotated_rectangle, run)
+                   for run in _tread_runs(candidates)]
+        joined = unary_union([outline.buffer(config.FLIGHT_JOIN / 2) for outline, _ in flights])
+        for area in getattr(joined, "geoms", [joined]) if flights else []:  # flights of one stair core
+            members = [(o, run) for o, run in flights if area.intersects(o)]
+            outline = unary_union([o for o, _ in members]).minimum_rotated_rectangle
+            if not any(outline.intersects(other) for other, *_ in found):
+                found.append((outline, config.CONF_STAIR_TREADS, "tread_run", [s for _, run in members for s in run]))
+    stairs = []
+    for polygon, conf, rule, parts in found:
+        points = [[round(x, 3), round(y, 3)] for x, y in list(polygon.exterior.coords)[:-1]]
+        stairs.append({"id": f"s{len(stairs) + 1}", "polygon": points, "confidence": conf, "rule": rule,
+                       "src": {"layer": parts[0].layer, "handles": list(dict.fromkeys(s.handle for s in parts))}})
+    if stairs:
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"{len(stairs)} stairs are modelled as a block outline only (no steps, no rise); "
+                                "check their position"})
+    return stairs
+
+
 # ---------------------------------------------------------------- storey, slab
 
 def _storey(drawing, elevation, height, used_labels, flags):
@@ -767,8 +840,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
             flags.append({"element_id": room["id"], "severity": "review",
                           "reason": f"room area {room['area_m2']} m2 differs from the printed {room['area_printed_m2']} m2"})
 
+    stairs = _stairs(drawing, roles, flags) if walls else []
     role_of = {entry["role"] for entry in roles["layers"].values()}
-    for missing in sorted(role_of & {"column", "stair"}):
+    for missing in sorted(role_of & {"column"}):
         flags.append({"element_id": "file", "severity": "info",
                       "reason": f"{missing} layers exist but {missing}s are not modelled"})
 
@@ -778,7 +852,7 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                    "scale_to_m": drawing.scale_to_m, "origin_offset": list(drawing.origin_offset), "family": family},
         "storey": storey, "walls": plan_walls, "openings": plan_openings,
         "rooms": [{"id": r["id"], **{k: v for k, v in r.items() if k != "id"}} for r in rooms],
-        "slab": slab, "flags": flags,
+        "slab": slab, "stairs": stairs, "flags": flags,
         "stats": {"wall_layer_length_m": round(sum(s.length for s, _ in candidates), 2),
                   "wall_explained_length_m": round(explained, 2),
                   "labels_total": len(drawing.labels),

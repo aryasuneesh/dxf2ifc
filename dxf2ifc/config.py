@@ -42,7 +42,7 @@ ROLE_PATTERNS = [
     ("door", rf"{_B}portes?{_E}|ouvrant|t(ü|ue)r|door"),
     ("window", r"fen[eê]tre|ch[aâ]ssis|vitrage|fenster|window|glaz"),
     ("column", rf"poteau|pilier|st(ü|ue)tze|column|{_B}cols{_E}"),
-    ("stair", r"escalier|treppe|stair"),
+    ("stair", rf"escalier|treppe|stair|{_B}strs{_E}"),
     ("dimension", rf"{_B}cot(e|es|ation|ations)?{_E}|{_B}dim|bema(ss|ß)|ma(ss|ß)(kette|linie)"),
     ("text", rf"text|annot|beschrift|label|{_B}txt"),
     ("furniture", r"mobilier|meuble|sanit|m(ö|oe)bel|furn"),
@@ -101,6 +101,17 @@ CLUSTER_REACH = 0.5  # m, walls this close belong to one group
 CLUSTER_PAD = 2.0  # m, groups within this distance of the main group's extent are kept
 FRAME_SPAN = 0.9  # a wall group spanning this share of the drawing both ways is the sheet frame
 
+# stairs: a stair-layer outline, or a run of parallel treads on any layer
+STAIR_LAYER_REACH = 0.3  # m, stair-layer lines this close are one stair
+STAIR_MIN_AREA = 1.5  # m2, smaller stair-layer groups are arrows or labels
+TREAD_LEN_MIN, TREAD_LEN_MAX = 0.8, 2.5  # m, width of a flight
+TREAD_GAP_MIN, TREAD_GAP_MAX = 0.20, 0.36  # m, going of one step
+TREAD_LEN_TOL = 0.10  # treads of one flight differ in length by less than this share
+TREAD_MIN_COUNT = 6  # fewer parallel treads are not a stair
+FLIGHT_JOIN = 0.6  # m, flights and landings this close are one stair
+CONF_STAIR_LAYER, CONF_STAIR_TREADS = 0.6, 0.5  # outline only: no steps, no rise
+MAX_TREAD_CANDIDATES = 50_000  # above this the tread search is skipped
+
 # door swings (quarter circles)
 SWING_R_MIN, SWING_R_MAX = 0.5, 1.4  # m, radius of a door swing = door leaf width
 SWING_SWEEP = (40, 100)  # degrees; doors are drawn open at 45 or 90
@@ -121,6 +132,7 @@ CONFIDENCE_COLOURS = {"high": (0.2, 0.7, 0.3), "medium": (1.0, 0.6, 0.1), "low":
 SPACE_TRANSPARENCY = 0.7  # rooms are see-through
 OPENING_OVERCUT = 0.10  # m, an opening is this much deeper than its wall so it cuts cleanly
 LEAF_THICKNESS = 0.05  # m, body of a door or window
+CONF_ROOF = 0.3  # the roof is never drawn on a floor plan: always an assumption
 MAX_SOURCE_HANDLES = 20  # DXF handles listed per element
 
 # --- triage (section 02) ---

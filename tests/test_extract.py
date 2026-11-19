@@ -3,6 +3,8 @@ import math
 import ezdxf
 import pytest
 
+from shapely.geometry import Polygon
+
 from dxf2ifc.extract import extract
 from dxf2ifc.normalize import load
 from dxf2ifc.qa import wall_pr
@@ -276,3 +278,28 @@ def test_building_in_loose_pieces_is_kept():
     walls = _box(0, 0, 10, 8) + _box(11.9, 0, 6, 6) + _box(11.9, 7.9, 6, 6) + _box(60, 60, 2, 1)
     kept, dropped = _main_building(walls, (0, 0, 70, 70))
     assert len(kept) == 12 and dropped == 4
+
+
+def test_stair_found_from_treads_on_any_layer(tmp_path):
+    def add_treads(msp):  # ten 1.2 m treads, 28 cm apart, on a layer named after nothing
+        for i in range(10):
+            msp.add_line((1.0, 1.0 + 0.28 * i), (2.2, 1.0 + 0.28 * i), dxfattribs={"layer": "TRAITS"})
+    plan, _ = run(tmp_path, edit=add_treads)
+    assert len(plan["stairs"]) == 1 and plan["stairs"][0]["rule"] == "tread_run"
+    xs, ys = zip(*plan["stairs"][0]["polygon"])
+    assert max(xs) - min(xs) == pytest.approx(1.2, abs=0.01) and max(ys) - min(ys) == pytest.approx(2.52, abs=0.01)
+    assert any("stairs are modelled as a block outline" in f["reason"] for f in plan["flags"])
+
+
+def test_stair_layer_outline(tmp_path):
+    def add_stair(msp):
+        msp.add_lwpolyline([(7, 1), (9, 1), (9, 4), (7, 4)], close=True, dxfattribs={"layer": "ESCALIER"})
+        msp.add_line((7, 1), (9, 4), dxfattribs={"layer": "ESCALIER"})
+    plan, _ = run(tmp_path, edit=add_stair)
+    assert [s["rule"] for s in plan["stairs"]] == ["stair_layer"]
+    assert Polygon(plan["stairs"][0]["polygon"]).area == pytest.approx(6.0, rel=0.02)
+
+
+def test_no_stairs_in_plain_house(tmp_path):
+    plan, _ = run(tmp_path)
+    assert plan["stairs"] == []

@@ -80,7 +80,7 @@ Status: **done**, **partly** (works, with a known limit), **open** (not started)
 | Files passing the room-area requirement (R9) | 77 | 81 |
 | Median time per plan | 3.7 s | 2.0 s |
 | Fire-safety symbols found | – | 1,744 in 168 files |
-| Stairs found (outline blocks) | – | 7,032 in 1,606 files (2,596 of 2,599 files counted) |
+| Stairs found (outline blocks) | – | 7,033 in 1,607 files |
 
 ## 3. Open items
 

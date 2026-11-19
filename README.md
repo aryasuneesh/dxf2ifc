@@ -66,11 +66,24 @@ Create a file named `.env` in this folder:
 
 ```
 LLM_PROVIDER=groq
-LLM_MODEL=<a model id from the provider>
-LLM_API_KEY=<your key>
+LLM_MODEL=qwen/qwen3.8-27b
+GROQ_API_KEY=<your key>
 ```
 
-`LLM_PROVIDER` can be `groq`, `openrouter`, `ollama` (fully local) or `none`. Answers are cached, so a second run on the same file costs nothing.
+`LLM_PROVIDER` can be `groq`, `openrouter`, `ollama` (fully local) or `none`. The key can also be given as `LLM_API_KEY` or `OPENROUTER_API_KEY`. Answers are cached, so a second run on the same file costs nothing.
+
+Tried on 19 Nov on a synthetic plan whose five layers have names no rule knows (`STRUCT_2D`, `MENUIS_INT`, ...):
+
+| Provider and model (free tier) | Layers right | Time |
+|---|---|---|
+| none (rules only) | 1 of 5 | 0 s |
+| groq `qwen/qwen3.8-27b` | 5 of 5 | 0.3 s |
+| groq `openai/gpt-oss-20b` | 5 of 5 | 0.4 s |
+| groq `openai/gpt-oss-120b` | 5 of 5 | 0.9 s |
+| openrouter `nvidia/nemotron-3.5-lightning:free` | 5 of 5 | 20 s |
+| openrouter `google/gemma-4-31b-it:free` | no usable answer | 6 s |
+
+Before turning this on for a client's plans, check that client's rules on external AI. For SECO plans, use `ollama` or get SECO's agreement first.
 
 ## Tests
 

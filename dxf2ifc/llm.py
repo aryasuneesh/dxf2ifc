@@ -3,7 +3,7 @@
 Environment (or a .env file in the working directory):
     LLM_PROVIDER  none | groq | openrouter | ollama
     LLM_MODEL     model id as listed by the provider's /models
-    LLM_API_KEY   not needed for ollama
+    LLM_API_KEY   not needed for ollama; GROQ_API_KEY or OPENROUTER_API_KEY also work
     LLM_BASE_URL  overrides the provider's default address
 """
 
@@ -30,7 +30,7 @@ def settings() -> dict:
     return {"provider": provider,
             "base_url": (env.get("LLM_BASE_URL") or config.LLM_PROVIDERS.get(provider, "")).rstrip("/"),
             "model": env.get("LLM_MODEL") or None,
-            "api_key": env.get("LLM_API_KEY", "")}
+            "api_key": env.get("LLM_API_KEY") or env.get(f"{provider.upper()}_API_KEY", "")}
 
 
 def enabled(cfg=None) -> bool:

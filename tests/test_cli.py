@@ -138,3 +138,29 @@ def test_try_it_page(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_feedback_is_saved_and_summed_up(tmp_path, capsys):
+    import threading
+    import urllib.request
+    server = cli.make_server(tmp_path, port=0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/feedback"
+    for role, useful, verdict in (("Structural engineer", "4", "ok"), ("Architect", "2", "wrong")):
+        body = json.dumps({"role": role, "useful": useful, "distrust": "door heights", "change": "",
+                           "minutes_on_page": 6.5, "verdicts": {"w1 | thin wall": {"verdict": verdict, "seconds": 40}}})
+        urllib.request.urlopen(urllib.request.Request(url, data=body.encode(), method="POST"))
+    bad = urllib.request.Request(url, data=b"not json", method="POST")
+    with pytest.raises(urllib.error.HTTPError):
+        urllib.request.urlopen(bad)
+    server.shutdown()
+    assert cli.main(["feedback", str(tmp_path / "feedback.jsonl")]) == 0
+    out = capsys.readouterr().out
+    assert "Testers: 2" in out and "mean 3.0 of 5" in out and "wrong 1, correct 1" in out and "door heights" in out
+
+
+def test_review_page_has_verdicts_and_form(tmp_path):
+    make_house(tmp_path / "h.dxf")
+    cli.main(["run", str(tmp_path / "h.dxf"), "--out", str(tmp_path / "o")])
+    page = (tmp_path / "o" / "review.html").read_text(encoding="utf-8")
+    assert "data-v='wrong'" in page and "id='feedback'" in page and "viewer.html" in page

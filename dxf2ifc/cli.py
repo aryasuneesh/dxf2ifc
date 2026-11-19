@@ -142,6 +142,16 @@ def make_server(root, port=8000) -> ThreadingHTTPServer:
         def do_POST(self):
             url = urlparse(self.path)
             size = int(self.headers.get("Content-Length") or 0)
+            if url.path == "/feedback":  # a tester's answers from a review page: one JSON line each
+                try:
+                    answers = json.loads(self.rfile.read(size)) if 0 < size <= 64_000 else None
+                except ValueError:
+                    answers = None
+                if not isinstance(answers, dict):
+                    return self.reply(400, b'{"error": "send one JSON object"}', "application/json")
+                with lock, (root / "feedback.jsonl").open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(answers, ensure_ascii=False) + "\n")
+                return self.reply(200, b'{"saved": true}', "application/json")
             if url.path != "/run" or not 0 < size <= config.MAX_DXF_MB * 1_000_000:
                 return self.reply(400, json.dumps({"error": "send one DXF file"}).encode(), "application/json")
             query = {key: values[0] for key, values in parse_qs(url.query).items()}
@@ -165,6 +175,26 @@ def make_server(root, port=8000) -> ThreadingHTTPServer:
     return ThreadingHTTPServer(("127.0.0.1", port), Handler)
 
 
+def feedback_summary(paths) -> str:
+    """Totals over feedback files (feedback.jsonl from the server, or downloaded feedback-*.json)."""
+    rows = []
+    for path in paths:
+        text = Path(path).read_text(encoding="utf-8").strip()
+        rows += [json.loads(line) for line in text.splitlines() if line.strip()] if path.endswith(".jsonl") else [json.loads(text)]
+    if not rows:
+        return "no feedback yet"
+    verdicts = [v["verdict"] for row in rows for v in row.get("verdicts", {}).values()]
+    useful = [int(row["useful"]) for row in rows if str(row.get("useful", "")).isdigit()]
+    lines = [f"Testers: {len(rows)} ({', '.join(f'{n} {role}' for role, n in Counter(r.get('role', '?') for r in rows).most_common())})",
+             f"Usefulness: mean {sum(useful) / len(useful):.1f} of 5" if useful else "Usefulness: no answers",
+             f"Items judged: {len(verdicts)}, wrong {verdicts.count('wrong')}, correct {verdicts.count('ok')}",
+             f"Minutes on page: median {sorted(r.get('minutes_on_page', 0) for r in rows)[len(rows) // 2]}"]
+    for key, title in (("distrust", "Would not trust"), ("change", "Change first")):
+        notes = [r[key].strip() for r in rows if r.get(key, "").strip()]
+        lines += [f"{title}:"] + [f"  - {note}" for note in notes]
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- entry point
 
 def main(argv=None) -> int:
@@ -174,6 +204,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="python -m dxf2ifc", description="2D DXF floor plans to IFC, with a review page.")
     parser.add_argument("--debug", action="store_true", help="show the full error trace")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("feedback", help="sum up user-test feedback files")
+    p.add_argument("files", nargs="+", help="feedback.jsonl from the try-it server or downloaded feedback-*.json")
 
     p = sub.add_parser("run", help="convert one DXF")
     p.add_argument("dxf")
@@ -229,7 +262,9 @@ def main(argv=None) -> int:
 
 
 def _dispatch(args) -> int:
-    if args.command == "run":
+    if args.command == "feedback":
+        print(feedback_summary(args.files))
+    elif args.command == "run":
         bbox = tuple(float(v) for v in args.bbox.split(",")) if args.bbox else None
         if bbox and len(bbox) != 4:
             raise ValueError("--bbox needs four numbers: xmin,ymin,xmax,ymax")

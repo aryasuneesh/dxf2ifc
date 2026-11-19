@@ -176,8 +176,45 @@ def _defaults(plan) -> list[tuple[str, str, str]]:
     return rows
 
 
+FEEDBACK = """<h2>Your feedback</h2>
+<p class='meta'>For user tests. Mark items above as correct or wrong, then fill this in. Nothing is sent anywhere
+except the local try-it server; opened as a file, the page downloads your answers as a small JSON file instead.</p>
+<form id='feedback'><p><label>Your role <select name='role'><option>Structural engineer</option>
+<option>MEP engineer</option><option>Architect</option><option>BIM modeller</option><option>Project manager</option>
+<option>Facility manager</option><option>Student or other</option></select></label></p>
+<p><label>Compared with redrawing the plan by hand, how useful is this? (1 = not at all, 5 = very)
+<input type='number' name='useful' min='1' max='5' required></label></p>
+<p><label>What would you not trust?<br><textarea name='distrust' rows='3' cols='70'></textarea></label></p>
+<p><label>What should change first?<br><textarea name='change' rows='3' cols='70'></textarea></label></p>
+<p><button type='submit'>Send feedback</button> <span id='sent'></span></p></form>
+<script>
+const opened = Date.now(), verdicts = {};
+document.querySelectorAll('.item .verdict button').forEach(button => button.onclick = () => {
+  const item = button.closest('.item');
+  verdicts[item.dataset.id + ' | ' + item.dataset.reason] = {verdict: button.dataset.v, seconds: Math.round((Date.now() - opened) / 1000)};
+  item.querySelectorAll('.verdict button').forEach(b => b.classList.toggle('on', b === button));
+});
+document.getElementById('feedback').onsubmit = async event => {
+  event.preventDefault();
+  const answers = Object.fromEntries(new FormData(event.target));
+  const body = JSON.stringify({file: '__FILE__', page: location.pathname, minutes_on_page: +((Date.now() - opened) / 60000).toFixed(1),
+                               ...answers, verdicts, sent: new Date().toISOString()});
+  const note = document.getElementById('sent');
+  try {
+    const reply = await fetch('/feedback', {method: 'POST', body, headers: {'Content-Type': 'application/json'}});
+    if (!reply.ok) throw new Error();
+    note.textContent = 'Saved. Thank you.';
+  } catch {
+    const link = Object.assign(document.createElement('a'), {download: 'feedback-' + Date.now() + '.json',
+      href: URL.createObjectURL(new Blob([body], {type: 'application/json'}))});
+    link.click(); note.textContent = 'Downloaded feedback file. Please send it to the team.';
+  }
+};
+</script>"""
+
 STYLE = """
-body{font:16px/1.5 Segoe UI,Arial,sans-serif;color:#1c1c1c;max-width:1100px;margin:24px auto;padding:0 20px}
+:root{color-scheme:light} html{background:#fff}
+body{font:16px/1.5 Segoe UI,Arial,sans-serif;color:#1c1c1c;background:#fff;max-width:1100px;margin:24px auto;padding:0 20px}
 h1{font-size:26px;margin:0 0 4px} h2{font-size:20px;margin:34px 0 10px;border-bottom:2px solid #ddd;padding-bottom:4px}
 .badge{display:inline-block;background:#c62828;color:#fff;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:.5px}
 .warn{background:#fff3cd;border-left:5px solid #e0a800;padding:8px 12px;margin:8px 0}
@@ -188,6 +225,9 @@ th{background:#f1f1f1} img{max-width:100%;border:1px solid #ccc}
 .item img{width:300px;flex:none} .item p{margin:0 0 6px} .meta{color:#555;font-size:14px}
 .pass{color:#1b7a33;font-weight:700} .fail{color:#c62828;font-weight:700} .na{color:#666}
 code{background:#f1f1f1;padding:1px 4px;border-radius:3px}
+.verdict button{font:inherit;font-size:14px;padding:3px 10px;border:1px solid #999;border-radius:4px;background:#fff;cursor:pointer}
+.verdict button.on[data-v=ok]{background:#1b7a33;color:#fff} .verdict button.on[data-v=wrong]{background:#c62828;color:#fff}
+#feedback textarea,#feedback select,#feedback input{font:inherit;max-width:100%}
 """
 
 
@@ -254,8 +294,11 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
         else:
             meta.append({"file": "Whole drawing", "storey": "Storey", "slab": "Floor slab"}.get(eid, esc(eid)))
         reason = flag["reason"][:1].upper() + flag["reason"][1:]
-        out.append('<div class="item">' + f"{picture}<div><p><b>{esc(reason)}.</b></p>"
-                   f"<p class='meta'>{'<br>'.join(meta)}</p></div></div>")
+        out.append(f'<div class="item" data-id="{esc(eid)}" data-reason="{esc(reason[:80])}">'
+                   f"{picture}<div><p><b>{esc(reason)}.</b></p>"
+                   f"<p class='meta'>{'<br>'.join(meta)}</p>"
+                   "<p class='verdict'><button type='button' data-v='ok'>Correct</button> "
+                   "<button type='button' data-v='wrong'>Wrong</button></p></div></div>")
 
     out += ["<h2>Rooms</h2>", "<table><tr><th>Room</th><th>Computed m2</th><th>Printed m2</th><th>Difference</th>"
                               "<th>Confidence</th></tr>"]
@@ -292,6 +335,7 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
     if info:
         out.append(f"<details><summary>Other notes ({len(info)})</summary><ul>")
         out += [f"<li>{esc(f['reason'])}</li>" for f in info] + ["</ul></details>"]
+    out.append(FEEDBACK.replace("__FILE__", esc(source["file"])))
     out.append("</body></html>")
 
     out_path = Path(out_path)

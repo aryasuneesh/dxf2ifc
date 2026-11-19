@@ -86,7 +86,7 @@ def test_tc39_review_page(tmp_path):
     html = (tmp_path / "review.html").read_text(encoding="utf-8")
 
     assert "TO BE VERIFIED" in html and "house.dxf" in html and "NIVEAU +01" in html
-    assert "<script" not in html and "http://" not in html and "https://" not in html  # works offline, runs nothing
+    assert "<script src" not in html and "http://" not in html and "https://" not in html  # works offline, loads nothing
     review_flags = [f for f in plan["flags"] if f["severity"] == "review"]
     low = [e for kind in ("walls", "openings", "rooms") for e in plan[kind] if e["confidence"] < 0.5]
     assert len(low) >= 2  # the single-line wall and the unlabelled space beside it

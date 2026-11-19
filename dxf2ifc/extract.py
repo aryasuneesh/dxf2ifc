@@ -517,7 +517,7 @@ def _room_seeds(drawing, used_labels):
     return seeds
 
 
-def _rooms(walls, seeds, used_labels, flags):
+def _rooms(walls, seeds, used_labels, flags, barriers=()):
     """Raster the walls, then every enclosed free region is a room; labels inside name it."""
     if not walls:
         return []
@@ -533,6 +533,9 @@ def _rooms(walls, seeds, used_labels, flags):
     for w in walls:
         pts = np.round((np.array(w.corners()) - (x0, y0)) / px * sub - sub / 2).astype(np.int32)
         cv2.fillPoly(image, [pts], 255, shift=4)
+    for seg in barriers:  # window lines close the facade where glazing is wider than a door gap
+        a = np.round((np.array([[seg.x1, seg.y1], [seg.x2, seg.y2]]) - (x0, y0)) / px * sub - sub / 2).astype(np.int32)
+        cv2.line(image, tuple(a[0]), tuple(a[1]), 255, 1, shift=4)
 
     count, labels, stats, _ = cv2.connectedComponentsWithStats((image == 0).astype(np.uint8), connectivity=4)
     outside = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))) - {0}
@@ -718,7 +721,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                                 f"single line; they were given a nominal thickness of {config.SINGLE_LINE_T:.2f} m"})
 
     openings = _classify_openings(gaps, drawing, roles, family, used_labels, flags)
-    rooms = _rooms(walls, _room_seeds(drawing, used_labels), used_labels, flags)
+    windows = {name for name, entry in roles["layers"].items() if entry["role"] == "window"}
+    barriers = [seg for seg in drawing.segments if seg.layer in windows] if walls else []
+    rooms = _rooms(walls, _room_seeds(drawing, used_labels), used_labels, flags, barriers)
     if walls and not rooms:
         flags.append({"element_id": "file", "severity": "review",
                       "reason": "no closed room found; this drawing may be an elevation, a section or a site plan"})

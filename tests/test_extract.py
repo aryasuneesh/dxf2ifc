@@ -252,3 +252,27 @@ def test_arcs_that_close_on_themselves_are_not_doors(tmp_path):
 
     plan, _ = run(tmp_path, edit=add_circle_in_two_halves)
     assert len(plan["openings"]) == 2
+
+
+def _box(x, y, w, h, t=0.2):
+    """Four walls around a w x h free space whose corner is (x, y)."""
+    from dxf2ifc.extract import _Wall
+    return [_Wall(1, 0, y - t / 2, x - t, x + w + t, t, [], "w", 1.0),
+            _Wall(1, 0, y + h + t / 2, x - t, x + w + t, t, [], "w", 1.0),
+            _Wall(0, 1, -(x - t / 2), y - t, y + h + t, t, [], "w", 1.0),
+            _Wall(0, 1, -(x + w + t / 2), y - t, y + h + t, t, [], "w", 1.0)]
+
+
+@pytest.mark.parametrize("x, y, w, h", [(0.37, 1.11, 4.0, 5.0), (2.9, 0.4, 3.13, 2.07), (5.5, 3.3, 10.3, 7.7)])
+def test_room_area_has_no_raster_bias(x, y, w, h):
+    from dxf2ifc.extract import _rooms
+    rooms = _rooms(_box(x, y, w, h), [{"name": "A", "area": None, "at": (x + w / 2, y + h / 2), "labels": []}], set(), [])
+    assert rooms[0]["area_m2"] == pytest.approx(w * h, rel=0.012)
+
+
+def test_building_in_loose_pieces_is_kept():
+    from dxf2ifc.extract import _main_building
+    # three blocks in an L, each 1.5 m from the next: none lies inside the largest one's extent
+    walls = _box(0, 0, 10, 8) + _box(11.9, 0, 6, 6) + _box(11.9, 7.9, 6, 6) + _box(60, 60, 2, 1)
+    kept, dropped = _main_building(walls, (0, 0, 70, 70))
+    assert len(kept) == 12 and dropped == 4

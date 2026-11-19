@@ -209,14 +209,25 @@ def _main_building(walls, extent):
         x1, y1, x2, y2 = groups[i].bounds
         return (any(w.rule == "parallel_pair" for w in members[i]), (x2 - x1) * (y2 - y1))
 
-    main = max(rest, key=footprint)
-    x1, y1, x2, y2 = groups[main].bounds
+    # Grow from the largest group: a building drawn in loose pieces (walls cut at every door) is
+    # chained together piece by piece; groups inside its extent stay too.
+    # ponytail: O(groups^2) per round; fine to a few thousand groups.
     pad = config.CLUSTER_PAD
-    kept = []
-    for i in rest:
-        a1, b1, a2, b2 = groups[i].bounds
-        if i == main or (a1 >= x1 - pad and b1 >= y1 - pad and a2 <= x2 + pad and b2 <= y2 + pad):
-            kept += members[i]
+    building, todo = {max(rest, key=footprint)}, set(rest)
+    todo -= building
+    grown = True
+    while grown:
+        grown = False
+        shape = unary_union([groups[i] for i in building])
+        x1, y1, x2, y2 = shape.bounds
+        for i in list(todo):
+            a1, b1, a2, b2 = groups[i].bounds
+            inside = a1 >= x1 - pad and b1 >= y1 - pad and a2 <= x2 + pad and b2 <= y2 + pad
+            if inside or groups[i].distance(shape) <= pad:
+                building.add(i)
+                todo.discard(i)
+                grown = True
+    kept = [w for i in building for w in members[i]]
     return kept, len(walls) - len(kept)
 
 
@@ -518,9 +529,10 @@ def _rooms(walls, seeds, used_labels, flags):
     width = math.ceil((x_max - x_min + 2 * margin) / px)
     height = math.ceil((y_max - y_min + 2 * margin) / px)
     image = np.zeros((height, width), np.uint8)
+    sub = 16  # sub-pixel vertices; whole-pixel rounding shrank rooms by up to 3 %
     for w in walls:
-        pts = np.round((np.array(w.corners()) - (x0, y0)) / px).astype(np.int32)
-        cv2.fillPoly(image, [pts], 255)
+        pts = np.round((np.array(w.corners()) - (x0, y0)) / px * sub - sub / 2).astype(np.int32)
+        cv2.fillPoly(image, [pts], 255, shift=4)
 
     count, labels, stats, _ = cv2.connectedComponentsWithStats((image == 0).astype(np.uint8), connectivity=4)
     outside = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))) - {0}
@@ -570,6 +582,8 @@ def _rooms(walls, seeds, used_labels, flags):
             continue
         polygon = [[round(x0 + (left + c + 0.5) * px, 3), round(y0 + (top + r + 0.5) * px, 3)]
                    for c, r in outline[:, 0, :]]
+        # the wall raster covers every pixel it touches: give back half a pixel along the outline
+        area += 0.5 * cv2.arcLength(max(contours, key=cv2.contourArea), True) * px * px
 
         named = [s["name"] for s in found if s["name"]]
         printed = [s["area"] for s in found if s["area"]]

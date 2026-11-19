@@ -36,11 +36,11 @@ ROLES = ("wall", "door", "window", "column", "stair", "text", "dimension", "hatc
 _B, _E = r"(^|[^a-z])", r"($|[^a-z])"  # not inside a longer word (MUR yes, MURET and ARMURE no)
 # First match wins: "HATCH MUR" is hatching, "MUR PORTEUR" is a wall before PORTE makes it a door.
 ROLE_PATTERNS = [
-    ("hatch", r"hach|hatch|schraff"),
+    ("hatch", rf"hach|hatch|schraff|{_B}patt"),  # AIA layer names: A-WALL-PATT
     ("wall", rf"{_B}murs?{_E}|cloison|voile|ma[cç]onnerie|porteu[rs]|w[aä]nd|mauer|{_B}walls?{_E}"),
     ("door", rf"{_B}portes?{_E}|ouvrant|t(ü|ue)r|door"),
     ("window", r"fen[eê]tre|ch[aâ]ssis|vitrage|fenster|window|glaz"),
-    ("column", r"poteau|pilier|st(ü|ue)tze|column"),
+    ("column", rf"poteau|pilier|st(ü|ue)tze|column|{_B}cols{_E}"),
     ("stair", r"escalier|treppe|stair"),
     ("dimension", rf"{_B}cot(e|es|ation|ations)?{_E}|{_B}dim|bema(ss|ß)|ma(ss|ß)(kette|linie)"),
     ("text", rf"text|annot|beschrift|label|{_B}txt"),

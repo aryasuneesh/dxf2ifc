@@ -74,6 +74,7 @@ def assign(drawing, tmp_path):
     ("FENETRES", "window"), ("POTEAU", "column"), ("ESCALIER", "stair"),
     ("A-TEXTE", "text"), ("HACHURE", "hatch"), ("MOBILIER", "furniture"), ("AXES", "grid"),
     ("HATCH MUR", "hatch"), ("MASSLINIE 1_50", "dimension"), ("SANITÄR", "furniture"),
+    ("A-WALL-____-PATT", "hatch"), ("A-WALL-____-MCUT", "wall"), ("S-COLS-____-MCUT", "column"),
     ("MURET", None), ("ARMURE", None), ("A-CONTOUR", None), ("STRUKTUR", None), ("0", None),
 ])
 def test_tc14_rules(name, role):

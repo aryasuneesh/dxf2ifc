@@ -654,8 +654,11 @@ def _tread_runs(segments):
     return runs
 
 
-def _stairs(drawing, roles, flags):
-    """Stair outlines, from stair layers or from tread runs. No steps or rise are modelled."""
+def _stairs(drawing, roles, flags, building):
+    """Stair outlines, from stair layers or from tread runs. No steps or rise are modelled.
+    Only stairs whose centre is inside the building's extent count: ramps, kerbs and site steps are outside it."""
+    x1, y1, x2, y2 = building
+    inside = lambda shape: x1 <= shape.centroid.x <= x2 and y1 <= shape.centroid.y <= y2
     stair_layers = {name for name, entry in roles["layers"].items() if entry["role"] == "stair"}
     found = []  # (polygon, confidence, rule, segments)
     on_layer = [s for s in drawing.segments if s.layer in stair_layers]
@@ -663,10 +666,11 @@ def _stairs(drawing, roles, flags):
         merged = unary_union([LineString([(s.x1, s.y1), (s.x2, s.y2)]).buffer(config.STAIR_LAYER_REACH) for s in on_layer])
         for shape in getattr(merged, "geoms", [merged]):
             outline = shape.buffer(-config.STAIR_LAYER_REACH).minimum_rotated_rectangle
-            if outline.area >= config.STAIR_MIN_AREA:
+            if outline.area >= config.STAIR_MIN_AREA and inside(outline):
                 parts = [s for s in on_layer if shape.contains(Point((s.x1 + s.x2) / 2, (s.y1 + s.y2) / 2))]
                 found.append((outline, config.CONF_STAIR_LAYER, "stair_layer", parts))
-    candidates = [s for s in drawing.segments if config.TREAD_LEN_MIN <= s.length <= config.TREAD_LEN_MAX]
+    candidates = [s for s in drawing.segments  # stair-layer lines were judged above, as one outline
+                  if config.TREAD_LEN_MIN <= s.length <= config.TREAD_LEN_MAX and s.layer not in stair_layers]
     if len(candidates) <= config.MAX_TREAD_CANDIDATES:
         flights = [(unary_union([LineString([(s.x1, s.y1), (s.x2, s.y2)]) for s in run]).minimum_rotated_rectangle, run)
                    for run in _tread_runs(candidates)]
@@ -674,7 +678,8 @@ def _stairs(drawing, roles, flags):
         for area in getattr(joined, "geoms", [joined]) if flights else []:  # flights of one stair core
             members = [(o, run) for o, run in flights if area.intersects(o)]
             outline = unary_union([o for o, _ in members]).minimum_rotated_rectangle
-            if not any(outline.intersects(other) for other, *_ in found):
+            if (outline.area >= config.FLIGHT_MIN_AREA and inside(outline)
+                    and not any(outline.intersects(other) for other, *_ in found)):
                 found.append((outline, config.CONF_STAIR_TREADS, "tread_run", [s for _, run in members for s in run]))
     stairs = []
     for polygon, conf, rule, parts in found:
@@ -884,12 +889,12 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
             flags.append({"element_id": room["id"], "severity": "review",
                           "reason": f"room area {room['area_m2']} m2 differs from the printed {room['area_printed_m2']} m2"})
 
-    stairs = _stairs(drawing, roles, flags) if walls else []
     if walls:
         corners = np.array([p for w in walls for p in w.corners()])
-        fire = _fire_symbols(drawing, (*corners.min(axis=0), *corners.max(axis=0)), flags)
+        building = (*corners.min(axis=0), *corners.max(axis=0))
+        stairs, fire = _stairs(drawing, roles, flags, building), _fire_symbols(drawing, building, flags)
     else:
-        fire = []
+        stairs, fire = [], []
     role_of = {entry["role"] for entry in roles["layers"].values()}
     for missing in sorted(role_of & {"column"}):
         flags.append({"element_id": "file", "severity": "info",

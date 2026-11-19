@@ -102,13 +102,14 @@ CLUSTER_PAD = 2.0  # m, groups within this distance of the main group's extent a
 FRAME_SPAN = 0.9  # a wall group spanning this share of the drawing both ways is the sheet frame
 
 # stairs: a stair-layer outline, or a run of parallel treads on any layer
-STAIR_LAYER_REACH = 0.3  # m, stair-layer lines this close are one stair
-STAIR_MIN_AREA = 1.5  # m2, smaller stair-layer groups are arrows or labels
+STAIR_LAYER_REACH = 0.6  # m, stair-layer lines this close are one stair (flights, landing, railing)
+STAIR_MIN_AREA = 3.0  # m2, smaller stair-layer groups are arrows, labels or loose pieces
 TREAD_LEN_MIN, TREAD_LEN_MAX = 0.8, 2.5  # m, width of a flight
 TREAD_GAP_MIN, TREAD_GAP_MAX = 0.20, 0.36  # m, going of one step
 TREAD_LEN_TOL = 0.10  # treads of one flight differ in length by less than this share
 TREAD_MIN_COUNT = 6  # fewer parallel treads are not a stair
 FLIGHT_JOIN = 0.6  # m, flights and landings this close are one stair
+FLIGHT_MIN_AREA = 1.5  # m2, a smaller run of treads is a pattern, not a stair
 CONF_STAIR_LAYER, CONF_STAIR_TREADS = 0.6, 0.5  # outline only: no steps, no rise
 MAX_TREAD_CANDIDATES = 50_000  # above this the tread search is skipped
 

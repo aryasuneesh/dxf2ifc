@@ -16,13 +16,14 @@ from .schema import level
 
 
 def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=None) -> tuple[dict, list[dict]]:
-    """DXF -> plan.json, roles.json, model.ifc, review.html in out_dir. Returns the plan and the checks."""
+    """DXF -> plan.json, roles.json, model.ifc, model_ifc2x3.ifc, review.html, viewer.html in out_dir. Returns the plan and the checks."""
     from .extract import extract
     from .normalize import load
     from .qa import check
     from .review import write_review
     from .roles import assign_roles
     from .to_ifc import write_all
+    from .viewer import write_viewer
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -36,6 +37,7 @@ def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=N
     plan["stats"]["runtime_s"] = round(time.perf_counter() - start, 1)
     checks = check([plan], out_dir / "model.ifc", runtime_s=plan["stats"]["runtime_s"], errors=errors)
     write_review(plan, checks, out_dir / "review.html", drawing=drawing, ifc_path=out_dir / "model.ifc")
+    write_viewer(out_dir / "model.ifc", out_dir / "viewer.html", title=plan["source"]["file"])
     (out_dir / "plan.json").write_text(json.dumps(plan, indent=1, ensure_ascii=False), encoding="utf-8")
     (out_dir / "roles.json").write_text(json.dumps(roles, indent=1, ensure_ascii=False), encoding="utf-8")
     return plan, checks
@@ -63,6 +65,7 @@ def summary(plan, checks, out_dir) -> str:
 def merge(plan_paths, out_path) -> list[str]:
     """Several plan.json files (one per storey) into one building."""
     from .to_ifc import write_all
+    from .viewer import write_viewer
 
     plans = sorted((json.loads(Path(p).read_text(encoding="utf-8")) for p in plan_paths),
                    key=lambda plan: plan["storey"]["elevation_m"])
@@ -70,7 +73,10 @@ def merge(plan_paths, out_path) -> list[str]:
         gap = round(upper["storey"]["elevation_m"] - lower["storey"]["elevation_m"], 2)
         if lower["storey"]["height_source"] == "default" and gap > 0:
             lower["storey"].update(height_m=gap, height_source="next_level")
-    return write_all(plans, out_path)
+    errors = write_all(plans, out_path)
+    if not errors:
+        write_viewer(out_path, Path(out_path).with_suffix(".html"), title=plans[0]["source"]["project"])
+    return errors
 
 
 # ---------------------------------------------------------------- try-it page
@@ -101,11 +107,12 @@ document.getElementById("go").onclick = async () => {
   const links = document.getElementById("links");
   links.hidden = !reply.ok;
   if (reply.ok) links.innerHTML = `<a href="/out/${data.id}/review.html" target="_blank">Open the review page</a> &middot; ` +
+    `<a href="/out/${data.id}/viewer.html" target="_blank">3D view</a> &middot; ` +
     `<a href="/out/${data.id}/model.ifc" download>IFC4</a> &middot; <a href="/out/${data.id}/model_ifc2x3.ifc" download>IFC2X3</a> &middot; <a href="/out/${data.id}/plan.json" download>plan.json</a>`;
 };
 </script></body></html>"""
 SERVED = {"review.html": "text/html; charset=utf-8", "model.ifc": "application/octet-stream",
-          "model_ifc2x3.ifc": "application/octet-stream",
+          "model_ifc2x3.ifc": "application/octet-stream", "viewer.html": "text/html; charset=utf-8",
           "plan.json": "application/json", "roles.json": "application/json"}
 
 

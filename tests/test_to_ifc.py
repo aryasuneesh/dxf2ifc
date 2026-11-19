@@ -167,3 +167,13 @@ def test_both_schemas_are_written_and_valid(tmp_path):
     assert old.schema == "IFC2X3" and len(old.by_type("IfcSpace")) == 2
     # writing IFC4 again after IFC2X3 in the same process stays clean
     assert write_all([copy.deepcopy(FIXTURE)], tmp_path / "again.ifc") == []
+
+
+def test_viewer_page_carries_ids_and_confidence(tmp_path):
+    from dxf2ifc.viewer import write_viewer
+    write_ifc([copy.deepcopy(FIXTURE)], tmp_path / "model.ifc")
+    shown = write_viewer(tmp_path / "model.ifc", tmp_path / "viewer.html")
+    page = (tmp_path / "viewer.html").read_text(encoding="utf-8")
+    ids = {w.GlobalId for w in ifcopenshell.open(tmp_path / "model.ifc").by_type("IfcWall")}
+    assert shown >= len(ids) and all(i in page for i in ids)
+    assert '"level":"high"' in page and "IfcOpeningElement" not in page

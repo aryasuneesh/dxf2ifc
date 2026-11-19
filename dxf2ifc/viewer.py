@@ -83,6 +83,7 @@ td:first-child{color:#666;white-space:nowrap} code{font-size:12px;word-break:bre
 <div id="view"></div>
 <div id="tools" class="panel"><h1>__TITLE__</h1><span class="badge">TO BE VERIFIED</span>
 <div id="legend" style="margin:8px 0"></div><div id="layers"></div>
+<label style="margin-top:6px"><input type="checkbox" id="sensors"> simulated room sensors</label>
 <div style="margin-top:6px;color:#666">Drag to turn, scroll to zoom, right-drag to pan. Click an element.</div></div>
 <div id="info" class="panel">Click an element to see where it came from and how sure the tool is.</div>
 <script type="module">
@@ -118,9 +119,23 @@ document.getElementById("legend").innerHTML = Object.entries(COLOURS)
   .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${k} confidence`).join("<br>");
 const centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length() || 10;
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.copy(centre); camera.position.copy(centre).add(new THREE.Vector3(size * 0.5, -size * 0.7, size * 0.6));
+controls.target.copy(centre); camera.position.copy(centre).add(new THREE.Vector3(size * 0.25, -size * 0.35, size * 0.3));
 controls.update();
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// Simulated IoT: one temperature and CO2 sensor per room, bound by the room's IFC GlobalId.
+// A portal would read real values keyed by the same id; nothing here is measured.
+const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+const reading = id => { const h = hash(id), t = Date.now() / 1000;
+  return { temp: 19 + (h % 50) / 10 + 1.2 * Math.sin(t / 20 + h), co2: 450 + (h % 400) + 80 * Math.sin(t / 30 + h / 7) }; };
+const rooms = meshes.filter(m => m.userData.kind === "rooms");
+let sensorsOn = false;
+const showSensors = () => { for (const m of rooms) {
+  if (!sensorsOn) { m.material.color.set(COLOURS[m.userData.level] || "#9aa0a6"); continue; }
+  const k = Math.min(1, Math.max(0, (reading(m.userData.id).temp - 18) / 8));
+  m.material.color.setRGB(k, 0.35, 1 - k); } };
+document.getElementById("sensors").onchange = e => { sensorsOn = e.target.checked; showSensors();
+  if (sensorsOn && groups.rooms) { groups.rooms.visible = true; } if (picked) describe(picked); };
+setInterval(() => { if (sensorsOn) { showSensors(); if (picked && picked.userData.kind === "rooms") describe(picked); } }, 2000);
 let picked = null;
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let down = null;
 renderer.domElement.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
@@ -132,12 +147,28 @@ renderer.domElement.addEventListener("pointerup", e => {
   if (picked) picked.material.emissive.setHex(0); picked = hit ? hit.object : null;
   if (!picked) return;
   picked.material.emissive.setHex(0x333333);
-  const d = picked.userData, rows = [["Type", d.type], ["Name", d.name], ["Storey", d.storey],
+  describe(picked);
+});
+function describe(mesh) {
+  const d = mesh.userData, rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
     ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Status", d.status], ["Rule", d.rule],
     ["Source", d.source], ["Printed area", d.printed_area ? d.printed_area + " m2" : ""], ["IFC GlobalId", `<code>${esc(d.id)}</code>`]];
+  if (sensorsOn && d.kind === "rooms") { const r = reading(d.id);
+    rows.push(["Temperature", `${r.temp.toFixed(1)} °C (simulated)`], ["CO2", `${Math.round(r.co2)} ppm (simulated)`]); }
   document.getElementById("info").innerHTML = "<table>" + rows.filter(r => r[1] !== "" && r[1] != null)
     .map(([k, v]) => `<tr><td>${k}</td><td>${k === "IFC GlobalId" ? v : esc(v)}</td></tr>`).join("") + "</table>";
-});
+}
+// viewer.html#<GlobalId> selects that element: links from the review page or a portal land on it
+function select(id) {
+  const mesh = meshes.find(m => m.userData.id === id); if (!mesh) return false;
+  if (picked) picked.material.emissive.setHex(0);
+  picked = mesh; mesh.parent.visible = true; mesh.material.emissive.setHex(0x333333); describe(mesh);
+  const b = new THREE.Box3().setFromObject(mesh), c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length(), 4);
+  controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r, -r * 1.4, r * 1.2)); controls.update(); return true;
+}
+window.viewer = { select, meshes };
+const fromHash = () => location.hash.length > 1 && select(decodeURIComponent(location.hash.slice(1)));
+addEventListener("hashchange", fromHash); fromHash();
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.setAnimationLoop(() => renderer.render(scene, camera));
 </script></body></html>

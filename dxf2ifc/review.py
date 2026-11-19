@@ -12,6 +12,7 @@ import math
 from collections import Counter
 from datetime import date
 from pathlib import Path
+from urllib.parse import quote
 
 import matplotlib
 
@@ -201,7 +202,8 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
            f"<style>{STYLE}</style></head><body>",
            f"<h1>{esc(source['file'])}</h1>",
            f"<p><span class='badge'>TO BE VERIFIED</span> &nbsp; Storey <b>{esc(storey['name'])}</b> &middot; "
-           f"made on {date.today().isoformat()} &middot; this model was built by a program from the 2D drawing.</p>",
+           f"made on {date.today().isoformat()} &middot; this model was built by a program from the 2D drawing. "
+           f"<a href='viewer.html' target='viewer'>Open the 3D view</a></p>",
            f"<p>{len(plan['walls'])} walls, {kinds['door']} doors, {kinds['window']} windows, "
            f"{kinds['opening']} other openings, {len(plan['rooms'])} rooms.</p><p>"]
     for name, label in (("high", "High confidence"), ("medium", "Medium"), ("low", "Low")):
@@ -244,7 +246,8 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
             element = elements[eid]
             meta.append(f"Element <code>{esc(eid)}</code>, confidence {element['confidence']:.2f} ({level(element['confidence'])})")
             if eid in ids:
-                meta.append(f"IFC id <code>{esc(ids[eid])}</code>")
+                meta.append(f"IFC id <code>{esc(ids[eid])}</code> "
+                            f"(<a href='viewer.html#{quote(ids[eid], safe='')}' target='viewer'>show in 3D</a>)")
             src = element.get("src") or {}
             if src.get("layer") or src.get("handles"):
                 meta.append(f"Drawing layer {esc(src.get('layer') or '-')}, entities {esc(', '.join(src.get('handles', [])[:6]) or '-')}")

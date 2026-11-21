@@ -73,10 +73,10 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 
 <div id="info" class="panel" role="region" aria-label="Review elements">
 <div class="row nav"><button id="prev" title="key P">Previous</button><button id="next" class="primary" title="key N">Next</button>
-<select id="filter" aria-label="Which elements to go through"><option value="check">to check</option>
-<option value="low">low confidence</option><option value="medium">medium confidence</option><option value="all">all</option></select></div>
+<select id="filter" aria-label="Which elements to go through"><option value="check">questions</option>
+<option value="low">low confidence</option><option value="medium">medium confidence</option><option value="all">all elements</option></select></div>
 <div id="el" aria-live="polite"><b>How to give feedback</b><ol style="margin:4px 0;padding-left:20px">
-<li>Press <b>Next</b> (or click any element) to go to something the program is unsure about.</li>
+<li>Press <b>Next</b> for the first question. Similar elements are asked about together and blink in the model.</li>
 <li>Say if it is right: <b>Correct</b>, <b>Wrong</b> or <b>Not sure</b>, and add a comment if you like.</li>
 <li>Answers are saved as you go. At the end, open <b>Overall questions</b> on the left.</li></ol></div>
 <div id="status" role="status"></div>
@@ -227,24 +227,18 @@ function sensorRows(mesh) {
   const r = reading(mesh.userData.id), el = $("sensorrows"); if (!el) return;
   el.innerHTML = `<tr><td>Temperature</td><td>${r.temp.toFixed(1)} °C (simulated)</td></tr><tr><td>CO2</td><td>${Math.round(r.co2)} ppm (simulated)</td></tr>`;
 }
-function describe(mesh, counter = "") {
-  const d = mesh.userData, mine = saved.items[d.id] || {};
-  const rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
-    ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Source", d.source],
-    ["Printed area", d.printed_area ? d.printed_area + " m2" : ""]];
-  $("el").innerHTML = (counter ? `<p style="margin:0 0 4px"><b id="counter">${counter}</b></p>` : "")
-    + `<h2 style="margin-top:0">${esc(label(d))}</h2>`
-    + (NOTES[d.id] ? `<div class="why"><b>Why check:</b> ${esc(NOTES[d.id])}</div>` : "")
-    + `<p style="margin:6px 0 2px"><b>Is this element right?</b></p>`
+// One answer card, for a single element or for a question that covers many.
+function card(o) {
+  const mine = saved.items[o.key] || {};
+  $("el").innerHTML = (o.counter ? `<p style="margin:0 0 4px"><b id="counter">${o.counter}</b></p>` : "")
+    + `<h2 style="margin-top:0">${esc(o.title)}</h2>`
+    + (o.why ? `<div class="why"><b>Why check:</b> ${o.why}</div>` : "")
+    + `<p style="margin:6px 0 2px"><b>${o.question}</b></p>`
     + `<div class="row verdict" role="group" aria-label="Your verdict">`
     + [["ok", "Correct"], ["wrong", "Wrong"], ["unsure", "Not sure"]].map(([v, t]) =>
         `<button type="button" data-v="${v}" aria-pressed="${mine.verdict === v}">${t}</button>`).join("") + `</div>`
-    + `<label>Comment (optional)<textarea id="comment" rows="2">${esc(mine.comment || "")}</textarea></label>`
-    + `<details style="margin-top:6px"><summary>Details</summary><table>`
-    + rows.filter(r => r[1] !== "" && r[1] != null).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join("")
-    + `<tr><td>IFC GlobalId</td><td><code>${esc(d.id)}</code></td></tr><tbody id="sensorrows"></tbody></table></details>`;
-  if (sensorsOn && d.kind === "rooms") sensorRows(mesh);
-  const entry = () => saved.items[d.id] ||= {what: label(d), why: NOTES[d.id] || ""};
+    + `<label>Comment (optional)<textarea id="comment" rows="2">${esc(mine.comment || "")}</textarea></label>` + (o.extra || "");
+  const entry = () => saved.items[o.key] ||= {what: o.title, why: o.whyText, ...(o.ids ? {ids: o.ids} : {})};
   $("el").querySelectorAll(".verdict button").forEach(b => b.onclick = () => {
     if (canFile && !handle && !asked) chooseFile();  // first answer: ask once where to keep the file
     else regain();
@@ -255,13 +249,48 @@ function describe(mesh, counter = "") {
   });
   $("comment").oninput = e => { entry().comment = e.target.value; store(); };
 }
+function describe(mesh, counter = "") {
+  const d = mesh.userData, q = QUESTIONS.find(q => q.ids.includes(d.id));
+  const rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
+    ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Source", d.source],
+    ["Printed area", d.printed_area ? d.printed_area + " m2" : ""]];
+  card({key: d.id, title: label(d), counter, question: "Is this element right?", whyText: NOTES[d.id] || "",
+    why: NOTES[d.id] ? esc(NOTES[d.id]) + (q && q.ids.length > 1
+      ? `<br><span class="hint">Question ${QUESTIONS.indexOf(q) + 1} covers this and ${q.ids.length - 1} more like it. Answer here only if this one is different.</span>` : "") : "",
+    extra: `<details style="margin-top:6px"><summary>Details</summary><table>`
+      + rows.filter(r => r[1] !== "" && r[1] != null).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join("")
+      + `<tr><td>IFC GlobalId</td><td><code>${esc(d.id)}</code></td></tr><tbody id="sensorrows"></tbody></table></details>`});
+  if (sensorsOn && d.kind === "rooms") sensorRows(mesh);
+}
+// Elements flagged for the same reason make one question: the engineer answers once for all of them.
+const byId = Object.fromEntries(meshes.map(m => [m.userData.id, m]));
+const QUESTIONS = Object.values(Object.entries(NOTES).filter(([id]) => byId[id]).reduce((by, [id, why]) => {
+  const key = why.replace(/\d+(\.\d+)?/g, "#");  // "Room area 12.1 m2 differs..." and "...14.3 m2..." are one question
+  (by[key] ||= {key: "q:" + key, ids: [], whys: []}).ids.push(id); by[key].whys.push(why); return by; }, {}));
+let lit = [];
+function light(ms) { lit.forEach(m => m.material.emissive.setHex(0)); lit = ms; }
+function frame(ms) {
+  const b = new THREE.Box3(); ms.forEach(m => b.expandByObject(m));
+  const c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length(), 4);
+  controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r * 0.6, -r * 0.85, r * 0.75)); controls.update();
+}
+function ask(q, counter) {
+  const ms = q.ids.map(id => byId[id]), n = ms.length, same = new Set(q.whys).size === 1;
+  ms.forEach(m => { m.parent.visible = true; }); picked = n === 1 ? ms[0] : null; light(ms); frame(ms);
+  const types = new Set(ms.map(m => ({IfcSpace: "room", IfcWallStandardCase: "wall"}[m.userData.type] || m.userData.type.replace("Ifc", "").toLowerCase())));
+  const title = n === 1 ? label(ms[0].userData) : `${n} ${types.size === 1 ? [...types][0] + "s" : "elements"}`;
+  card({key: q.key, title, counter, ids: q.ids, whyText: same ? q.whys[0] : q.key.slice(2).replaceAll("#", "…"),
+    question: n === 1 ? "Is this element right?" : "Are these right? One answer covers all of them.",
+    why: same ? esc(q.whys[0]) : esc(q.key.slice(2).replaceAll("#", "…"))
+      + `<details><summary style="font-weight:400">The numbers for each (${n})</summary><ul style='margin:2px 0;padding-left:18px'>`
+      + ms.map((m, i) => `<li>${esc(label(m.userData))}: ${esc(q.whys[i])}</li>`).join("") + "</ul></details>",
+    extra: n > 1 ? `<p class="hint">They blink in the model. If one of them is different, click it and answer for that one alone.</p>` : ""});
+}
 // viewer.html#<GlobalId> selects that element: links from the review page or a portal land on it
 function select(id, move = true, counter = "") {
-  const mesh = meshes.find(m => m.userData.id === id); if (!mesh) return false;
-  if (picked) picked.material.emissive.setHex(0);
-  picked = mesh; mesh.parent.visible = true; mesh.material.emissive.setHex(0x444444); describe(mesh, counter);
-  if (move) { const b = new THREE.Box3().setFromObject(mesh), c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length(), 4);
-    controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r, -r * 1.4, r * 1.2)); controls.update(); }
+  const mesh = byId[id]; if (!mesh) return false;
+  picked = mesh; light([mesh]); mesh.parent.visible = true; describe(mesh, counter);
+  if (move) frame([mesh]);
   return true;
 }
 
@@ -269,15 +298,16 @@ function select(id, move = true, counter = "") {
 const fit = () => { controls.target.copy(centre); camera.position.copy(home); controls.update(); };
 const zoom = f => { camera.position.sub(controls.target).multiplyScalar(f).add(controls.target); controls.update(); };
 let step = -1;
-const currentList = () => { const want = $("filter").value;
-  return meshes.filter(m => want === "all" || (want === "check" ? NOTES[m.userData.id] : m.userData.level === want))
-    .sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1)); };
-const answeredIn = list => list.filter(m => (saved.items[m.userData.id] || {}).verdict).length;
+const inCheck = () => $("filter").value === "check";
+const currentList = () => { const want = $("filter").value; return inCheck() ? QUESTIONS
+  : meshes.filter(m => want === "all" || m.userData.level === want).sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1)); };
+const answeredIn = list => list.filter(x => (saved.items[x.key || x.userData.id] || {}).verdict).length;
 function stepThrough(dir) {
   const list = currentList();
   if (!list.length) { $("el").textContent = "Nothing in this list."; return; }
   step = (step + dir + list.length) % list.length;
-  select(list[step].userData.id, true, `${step + 1} of ${list.length} (${answeredIn(list)} answered)`);
+  const counter = `${inCheck() ? "Question " : ""}${step + 1} of ${list.length} (${answeredIn(list)} answered)`;
+  if (inCheck()) ask(list[step], counter); else select(list[step].userData.id, true, counter);
 }
 $("fit").onclick = fit; $("zin").onclick = () => zoom(0.8); $("zout").onclick = () => zoom(1.25);
 $("next").onclick = () => stepThrough(1); $("prev").onclick = () => stepThrough(-1);
@@ -295,5 +325,12 @@ window.viewer = { select, meshes };
 const fromHash = () => location.hash.length > 1 && select(decodeURIComponent(location.hash.slice(1)));
 addEventListener("hashchange", fromHash); fromHash();
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-renderer.setAnimationLoop(() => renderer.render(scene, camera));
+// The selected element blinks in bright yellow about once a second (well under 3 flashes a second, safe
+// for photosensitive viewers); with "reduce motion" set in the system it stays lit instead.
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+renderer.setAnimationLoop(t => {
+  const k = still.matches ? 0.8 : 0.45 + 0.45 * Math.sin(t / 160);
+  for (const m of lit) m.material.emissive.setRGB(k, 0.85 * k, 0);
+  renderer.render(scene, camera);
+});
 </script></body></html>

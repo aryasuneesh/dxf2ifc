@@ -35,8 +35,8 @@ def index_page(names, offline=False) -> bytes:
                    f"<a href='{e(n)}/viewer.html'>3D only</a>)</span></li>" for n in names)
     steps = ("<li>Unzip the whole folder first (opening files inside the zip does not work), then open a plan below "
              "in Chrome or Edge. It opens as a 3D model with the 2D plan in the top right corner.</li>"
-             "<li>Press <b>Next</b> to go to each element the program is unsure about. Say if it is Correct, Wrong or "
-             "Not sure, and add a comment if you like. The first time, the browser asks where to save your feedback file: "
+             "<li>Press <b>Next</b> to go through a few questions. Each covers all elements with the same doubt; "
+             "they blink in the model. Say if they are Correct, Wrong or Not sure, and add a comment if you like. The first time, the browser asks where to save your feedback file: "
              "pick a folder you will find again. Every answer is written to that file straight away.</li>"
              "<li>At the end, open <b>Overall questions</b> on the left and answer them. Then email the feedback file "
              "(one per plan) to the person who sent you this folder. In other browsers, press <b>Download feedback</b> to get the file.</li>"

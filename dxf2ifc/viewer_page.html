@@ -250,13 +250,14 @@ function card(o) {
   $("comment").oninput = e => { entry().comment = e.target.value; store(); };
 }
 function describe(mesh, counter = "") {
-  const d = mesh.userData, q = QUESTIONS.find(q => q.ids.includes(d.id));
+  const d = mesh.userData, why = (NOTES[d.id] || []).join("; ");
+  const also = QUESTIONS.filter(q => q.ids.length > 1 && q.ids.includes(d.id)).map(q => QUESTIONS.indexOf(q) + 1);
   const rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
     ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Source", d.source],
     ["Printed area", d.printed_area ? d.printed_area + " m2" : ""]];
-  card({key: d.id, title: label(d), counter, question: "Is this element right?", whyText: NOTES[d.id] || "",
-    why: NOTES[d.id] ? esc(NOTES[d.id]) + (q && q.ids.length > 1
-      ? `<br><span class="hint">Question ${QUESTIONS.indexOf(q) + 1} covers this and ${q.ids.length - 1} more like it. Answer here only if this one is different.</span>` : "") : "",
+  card({key: d.id, title: label(d), counter, question: "Is this element right?", whyText: why,
+    why: why ? esc(why) + (also.length
+      ? `<br><span class="hint">Question ${also.join(" and ")} already covers this one with others like it. Answer here only if this one is different.</span>` : "") : "",
     extra: `<details style="margin-top:6px"><summary>Details</summary><table>`
       + rows.filter(r => r[1] !== "" && r[1] != null).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join("")
       + `<tr><td>IFC GlobalId</td><td><code>${esc(d.id)}</code></td></tr><tbody id="sensorrows"></tbody></table></details>`});
@@ -264,9 +265,13 @@ function describe(mesh, counter = "") {
 }
 // Elements flagged for the same reason make one question: the engineer answers once for all of them.
 const byId = Object.fromEntries(meshes.map(m => [m.userData.id, m]));
-const QUESTIONS = Object.values(Object.entries(NOTES).filter(([id]) => byId[id]).reduce((by, [id, why]) => {
-  const key = why.replace(/\d+(\.\d+)?/g, "#");  // "Room area 12.1 m2 differs..." and "...14.3 m2..." are one question
-  (by[key] ||= {key: "q:" + key, ids: [], whys: []}).ids.push(id); by[key].whys.push(why); return by; }, {}));
+// A wall can be in two questions (single line, and a gap in it); two gaps in one wall count it once.
+const QUESTIONS = Object.values(Object.entries(NOTES).filter(([id]) => byId[id]).flatMap(([id, whys]) => whys.map(why => [id, why]))
+  .reduce((by, [id, why]) => {
+    const key = why.replace(/\d+(\.\d+)?/g, "#");  // "Room area 12.1 m2 differs..." and "...14.3 m2..." are one question
+    const q = by[key] ||= {key: "q:" + key, ids: [], whys: []}, i = q.ids.indexOf(id);
+    if (i < 0) { q.ids.push(id); q.whys.push(why); } else if (q.whys[i] !== why) q.whys[i] += "; " + why;
+    return by; }, {}));
 let lit = [];
 function light(ms) { lit.forEach(m => m.material.emissive.setHex(0)); lit = ms; }
 function frame(ms) {

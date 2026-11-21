@@ -137,7 +137,8 @@ def _line_array(drawing):
 
 
 def _ifc_ids(ifc_path, source_file) -> dict:
-    """Plan element id -> IFC GlobalId. A door wins over the opening it fills."""
+    """Plan element id -> IFC GlobalId. A door wins over the opening it fills; a bare opening (a gap) maps to the
+    wall it cuts, because a void has no geometry of its own to show or click."""
     if not ifc_path:
         return {}
     import ifcopenshell
@@ -148,7 +149,10 @@ def _ifc_ids(ifc_path, source_file) -> dict:
     for product in model.by_type("IfcProduct"):
         trust = element.get_pset(product, "SECO_Trust") or {}
         if trust.get("SourceFile") == source_file and trust.get("ElementId"):
-            if trust["ElementId"] not in ids or not product.is_a("IfcOpeningElement"):
+            if product.is_a("IfcOpeningElement"):
+                if trust["ElementId"] not in ids and product.VoidsElements:
+                    ids[trust["ElementId"]] = product.VoidsElements[0].RelatingBuildingElement.GlobalId
+            else:
                 ids[trust["ElementId"]] = product.GlobalId
     return ids
 
@@ -167,7 +171,7 @@ def review_list(plan) -> list[dict]:
 
 
 def viewer_notes(plan, ifc_path) -> tuple[dict, list]:
-    """What to check, for the 3D view: {IFC GlobalId: reason} per element, and reasons about the whole drawing."""
+    """What to check, for the 3D view: {IFC GlobalId: [reasons]} per element, and reasons about the whole drawing."""
     ids, notes, general = _ifc_ids(ifc_path, plan["source"]["file"]), {}, []
     for flag in review_list(plan):
         reason = flag["reason"][:1].upper() + flag["reason"][1:]
@@ -176,7 +180,7 @@ def viewer_notes(plan, ifc_path) -> tuple[dict, list]:
         else:
             general.append(reason)
     general += [f"{what}: {value} ({why})" for what, value, why in _defaults(plan)]
-    return {gid: "; ".join(reasons) for gid, reasons in notes.items()}, general
+    return notes, general
 
 
 def _img(png: bytes, alt: str) -> str:

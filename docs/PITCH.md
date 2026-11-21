@@ -16,9 +16,9 @@ We turn the DXF into an IFC in seconds, and we show the engineer exactly what to
 | 0:40 | **What we learned** | Interviews with Martin: DXF only; a model is never perfect, so "explain what a person should review"; no client plan may go to outside AI; define and justify your own quality bar. |
 | 1:10 | **Our answer** | DXF in, IFC4 (and IFC2X3) out, plus a review page. Every element carries its source in the drawing, a confidence and "To be verified". |
 | 1:30 | **Live demo** (2 min) | 1. Upload a DXF on the local page. 2. Review page: the plan coloured by confidence, the "To review" list with a crop of each doubt. 3. Click "show in 3D": the element in the browser viewer, with its IFC id, rule and source. 4. Turn on simulated room sensors: the stable room id is where a portal or IoT value attaches. |
-| 3:30 | **Does it work?** | We set the bar ourselves (R1–R12) and measure it on SECO's whole dataset, not on one hand-picked plan: 15,971 files scanned, [run] plans converted, rooms checked against the areas printed on the plans themselves. Honest number: [run] % of rooms within 5 %. Where it fails, the page says so. |
+| 3:30 | **Does it work?** | We set the bar ourselves (R1–R12) and measure it on SECO's whole dataset, not on one hand-picked plan: 15,971 files scanned, 2,599 of them floor plans, 2,591 converted without error, rooms checked against the areas printed on the plans themselves. Honest number: 50 % of 5,808 checked rooms within 5 % of the printed area (45 % a week earlier). Where it fails, the page says so. |
 | 4:00 | **Users tried it** | [test] Who tested, what they said, what we changed, before and after. |
-| 4:30 | **Ready to industrialise** | Plain Python, CPU only, about 4 s per plan, zero API cost. Runs behind an API on Azure or Databricks as is. Optional LLM step for unknown layer names: free tier or fully local (Ollama), never sees geometry. MIT licence. |
+| 4:30 | **Ready to industrialise** | Plain Python, CPU only, about 2 s per plan (median), zero API cost. Runs behind an API on Azure or Databricks as is. Optional LLM step for unknown layer names: free tier or fully local (Ollama), never sees geometry. MIT licence. |
 | 4:50 | **Ask** | A pilot on one live SECO project, with one engineer marking the review page. |
 
 ## Demo checklist
@@ -41,7 +41,7 @@ We turn the DXF into an IFC in seconds, and we show the engineer exactly what to
 
 ## Still to do
 
-- Fill the [run] and [test] numbers.
+- Fill the [test] numbers.
 - Choose the two demo plans.
 - Slides (after the pitch workshop).
 - Rehearse with a timer twice.

@@ -70,8 +70,10 @@ How to run a test and where to record it: `docs/USER_TESTS.md`.
 .venv\Scripts\python -m dxf2ifc share-pack out\plan_a out\plan_b --offline --zip "out\dxf2ifc user test.zip"
 ```
 
-Testers unzip it and open `START HERE.html`. Everything they mark or type is saved automatically in their browser.
-At the end they press **Save feedback file** and email that small file back (or paste the text it shows).
+Testers unzip it and open `START HERE.html`, then a plan: the 3D model with the 2D plan in a corner. **Next** goes to
+each element the program is unsure about; they mark it Correct, Wrong or Not sure and can comment. In Chrome and Edge,
+the first answer asks where to save `feedback-<plan>.json`, and every answer is written to that file straight away
+(and kept in the browser too). In other browsers, **Download feedback** gives the file. They email it back.
 Sum up the files you receive with `python -m dxf2ifc feedback feedback-*.json`.
 
 ## Share with testers online

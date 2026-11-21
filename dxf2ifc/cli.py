@@ -20,7 +20,7 @@ def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=N
     from .extract import extract
     from .normalize import load
     from .qa import check
-    from .review import write_review
+    from .review import plan_image, viewer_notes, write_review
     from .roles import assign_roles
     from .to_ifc import write_all
     from .viewer import write_compare, write_viewer
@@ -37,7 +37,9 @@ def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=N
     plan["stats"]["runtime_s"] = round(time.perf_counter() - start, 1)
     checks = check([plan], out_dir / "model.ifc", runtime_s=plan["stats"]["runtime_s"], errors=errors)
     write_review(plan, checks, out_dir / "review.html", drawing=drawing, ifc_path=out_dir / "model.ifc")
-    write_viewer(out_dir / "model.ifc", out_dir / "viewer.html", title=plan["source"]["file"])
+    notes, general = viewer_notes(plan, out_dir / "model.ifc")
+    write_viewer(out_dir / "model.ifc", out_dir / "viewer.html", title=plan["source"]["file"],
+                 plan_png=plan_image(plan, drawing=drawing), notes=notes, general=general)
     write_compare(out_dir / "compare.html", plan["source"]["file"])
     (out_dir / "plan.json").write_text(json.dumps(plan, indent=1, ensure_ascii=False), encoding="utf-8")
     (out_dir / "roles.json").write_text(json.dumps(roles, indent=1, ensure_ascii=False), encoding="utf-8")

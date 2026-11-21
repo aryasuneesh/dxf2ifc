@@ -1,0 +1,296 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__ 3D</title>
+<style>
+:root{color-scheme:light}
+html,body{margin:0;height:100%;font:15px/1.5 Segoe UI,Arial,sans-serif;background:#f4f5f7;color:#1c1c1c}
+#view{position:fixed;inset:0} #view canvas{display:block}
+.panel{position:fixed;background:#fff;border:1px solid #c9ccd1;border-radius:8px;padding:10px 14px;box-shadow:0 2px 10px #0002;box-sizing:border-box}
+#tools{top:12px;left:12px;width:290px;max-height:calc(55vh - 18px);overflow:auto}
+#mine{bottom:12px;left:12px;width:290px;max-height:calc(45vh - 18px);overflow:auto}
+#planbox{top:12px;right:12px;width:380px;max-height:calc(60vh - 18px);overflow:auto}
+#planbox.big{width:min(900px,calc(100vw - 330px));max-height:calc(100vh - 24px)}
+#planbox img{width:100%;display:block;border:1px solid #ddd;margin-top:6px;cursor:zoom-in}
+#planbox.big img{cursor:zoom-out}
+#info{bottom:12px;right:12px;width:380px;max-height:calc(40vh - 18px);overflow:auto}
+h1{font-size:16px;margin:0 0 4px;word-break:break-word} h2{font-size:14px;margin:12px 0 4px;color:#333}
+summary{cursor:pointer;font-weight:600;font-size:14px} details>summary{margin:2px 0}
+label{display:block;cursor:pointer;padding:2px 0}
+.sw{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:7px;vertical-align:-2px;border:1px solid #0003}
+.badge{display:inline-block;background:#b3261e;color:#fff;border-radius:3px;padding:1px 6px;font-size:12px;font-weight:600}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+button,select{font:inherit;padding:4px 10px;border:1px solid #8a8f98;border-radius:5px;background:#fff;color:#1c1c1c;cursor:pointer}
+button:hover{background:#eef2f8} button.primary{background:#1d5fbf;color:#fff;border-color:#1d5fbf}
+.verdict button[aria-pressed=true][data-v=ok]{background:#1b7a33;color:#fff;border-color:#1b7a33}
+.verdict button[aria-pressed=true][data-v=wrong]{background:#c62828;color:#fff;border-color:#c62828}
+.verdict button[aria-pressed=true][data-v=unsure]{background:#5f6368;color:#fff;border-color:#5f6368}
+textarea,input[type=text],input[type=number]{font:inherit;width:100%;box-sizing:border-box}
+:focus-visible{outline:3px solid #1d5fbf;outline-offset:2px}
+table{border-collapse:collapse;width:100%} td{padding:3px 4px;border-bottom:1px solid #e3e3e3;vertical-align:top}
+td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:13px;word-break:break-all}
+.why{background:#fff3cd;border-left:4px solid #e0a800;padding:6px 10px;margin:6px 0}
+.hint{color:#555;font-size:13px} #status{font-size:13px;margin:6px 0;padding:6px 8px;border-radius:5px;background:#f1f3f6}
+#status.ok{background:#e6f4ea} #status.warn{background:#fff3cd}
+@media (max-width:900px){#tools,#mine{width:240px} #planbox,#info{width:300px}}
+</style>
+</head><body>
+<div id="view" role="img" aria-label="3D model of __TITLE__. Use the buttons in the panels to move the view and step through elements."></div>
+
+<div id="tools" class="panel" role="region" aria-label="View controls">
+<h1>__TITLE__</h1><span class="badge">TO BE VERIFIED</span>
+<h2>Go through elements</h2>
+<div class="row"><button id="prev" title="key P">Previous</button><button id="next" class="primary" title="key N">Next</button>
+<select id="filter" aria-label="Which elements to go through"><option value="check">to check</option>
+<option value="low">low confidence</option><option value="medium">medium confidence</option><option value="all">all</option></select></div>
+<h2>View</h2>
+<div class="row"><button id="fit" title="Show the whole model (key R)">Whole model</button>
+<button id="zin" title="Zoom in (key +)">Zoom in</button><button id="zout" title="Zoom out (key -)">Zoom out</button></div>
+<h2>Colours</h2>
+<div class="row"><select id="colourby" aria-label="Colour the model by">
+<option value="confidence">by how sure the program is</option><option value="type">by element type</option></select></div>
+<div id="legend"></div>
+<div class="hint" id="legendnote"></div>
+<details><summary>Show or hide</summary><div id="layers"></div>
+<label><input type="checkbox" id="sensors"> simulated room sensors</label></details>
+<div class="hint">Drag to turn, scroll to zoom, right-drag to pan, click an element.
+Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
+</div>
+
+<div id="mine" class="panel" role="region" aria-label="Your feedback">
+<h2 style="margin-top:0">Your feedback</h2>
+<div id="status" role="status"></div>
+<div class="row"><button id="choose" hidden>Choose feedback file</button><button id="download">Download feedback</button></div>
+<details id="overall"><summary>Overall questions (2 minutes, at the end)</summary>
+<form id="form">
+<label>Your name or initials (optional)<input type="text" name="name" autocomplete="name"></label>
+<label>Your role<select name="role"><option>Structural engineer</option><option>MEP engineer</option><option>Architect</option>
+<option>BIM modeller</option><option>Project manager</option><option>Facility manager</option><option>Student or other</option></select></label>
+<label>Compared with redrawing the plan by hand, how useful is this? (1 = not at all, 5 = very)<input type="number" name="useful" min="1" max="5"></label>
+<label>What would you not trust?<textarea name="distrust" rows="2"></textarea></label>
+<label>What should change first?<textarea name="change" rows="2"></textarea></label>
+<label>Any other remarks or comments<textarea name="remarks" rows="3"></textarea></label>
+</form>
+<div id="general"></div>
+</details>
+</div>
+
+<details id="planbox" class="panel" open><summary>2D plan</summary>__PLAN__
+<div class="hint">Colours on the plan are the same confidence colours. Click the plan to make it larger.</div></details>
+
+<div id="info" class="panel" role="region" aria-label="Selected element" aria-live="polite">
+<b>How to give feedback</b><ol style="margin:4px 0;padding-left:20px">
+<li>Press <b>Next</b> (or click any element) to go to something the program is unsure about.</li>
+<li>Say if it is right: <b>Correct</b>, <b>Wrong</b> or <b>Not sure</b>, and add a comment if you like.</li>
+<li>Answers are saved as you go. At the end, open <b>Overall questions</b> on the left.</li></ol></div>
+
+<script>__THREE__</script>
+<script>
+const DATA = __DATA__, SETUP = __SETUP__, COLOURS = SETUP.colours, NOTES = SETUP.notes, $ = id => document.getElementById(id);
+const TYPE_COLOURS = {walls: "#cfc8bd", openings: "#8d6e63", rooms: "#9cc9f0", slabs: "#b9bcc2", stairs: "#a1887f", "fire safety": "#7e57c2"};
+const WINDOW_COLOUR = "#5aa9e6", esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ---------------------------------------------------------------- scene
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf4f5f7);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000);
+camera.up.set(0, 0, 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
+$("view").appendChild(renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(1, -2, 3); scene.add(sun);
+const groups = {}, meshes = [], box = new THREE.Box3();
+for (const item of DATA) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(item.v, 3)); g.setIndex(item.f); g.computeVertexNormals();
+  const room = item.kind === "rooms";
+  const m = new THREE.MeshLambertMaterial({ transparent: room, opacity: room ? 0.35 : 1, depthWrite: !room, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, m); mesh.userData = item; meshes.push(mesh);
+  (groups[item.kind] ||= new THREE.Group()).add(mesh); box.expandByObject(mesh);
+}
+for (const [kind, group] of Object.entries(groups)) {
+  scene.add(group);
+  const label = document.createElement("label");
+  label.innerHTML = `<input type="checkbox" checked> ${kind} (${group.children.length})`;
+  label.firstChild.onchange = e => { group.visible = e.target.checked; };
+  $("layers").appendChild(label);
+}
+const centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length() || 10;
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(centre); camera.position.copy(centre).add(new THREE.Vector3(size * 0.25, -size * 0.35, size * 0.3));
+controls.update();
+const home = camera.position.clone();
+
+// ---------------------------------------------------------------- colours
+// The colours are added by this program, not taken from the drawing: by default they say how sure it is.
+let colourBy = "confidence", sensorsOn = false;
+const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+const reading = id => { const h = hash(id), t = Date.now() / 1000;
+  return { temp: 19 + (h % 50) / 10 + 1.2 * Math.sin(t / 20 + h), co2: 450 + (h % 400) + 80 * Math.sin(t / 30 + h / 7) }; };
+const baseColour = d => colourBy === "confidence" ? (COLOURS[d.level] || "#9aa0a6")
+  : (d.type === "IfcWindow" ? WINDOW_COLOUR : TYPE_COLOURS[d.kind] || "#9aa0a6");
+function paint() {
+  for (const m of meshes) {
+    const d = m.userData;
+    if (sensorsOn && d.kind === "rooms") { const k = Math.min(1, Math.max(0, (reading(d.id).temp - 18) / 8)); m.material.color.setRGB(k, 0.35, 1 - k); }
+    else m.material.color.set(baseColour(d));
+  }
+  $("legend").innerHTML = colourBy === "confidence"
+    ? Object.entries(COLOURS).map(([k, c]) => `<span class="sw" style="background:${c}"></span>${k}: ${{high: "probably right", medium: "worth a look", low: "check this"}[k] || ""}`).join("<br>")
+    : Object.entries(TYPE_COLOURS).filter(([k]) => groups[k]).map(([k, c]) => `<span class="sw" style="background:${c}"></span>${k}`).join("<br>")
+      + (groups.openings ? `<br><span class="sw" style="background:${WINDOW_COLOUR}"></span>windows` : "");
+  $("legendnote").textContent = colourBy === "confidence"
+    ? "These colours are added by this program, not by the drawing. They show how sure it is about each element." : "";
+}
+$("colourby").onchange = e => { colourBy = e.target.value; paint(); };
+$("sensors").onchange = e => { sensorsOn = e.target.checked; if (sensorsOn && groups.rooms) groups.rooms.visible = true; paint(); if (picked) describe(picked); };
+setInterval(() => { if (sensorsOn) { paint(); if (picked && picked.userData.kind === "rooms") sensorRows(picked); } }, 2000);
+paint();
+
+// ---------------------------------------------------------------- saved answers
+// Saved in the browser on every change; also written to a file on disk when the browser allows it (Chrome, Edge).
+const KEY = "dxf2ifc-3d:" + SETUP.title + ":" + location.pathname;
+let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
+saved.items ||= {}; saved.form ||= {}; saved.started ||= Date.now();
+const fileName = "feedback-" + SETUP.title.replace(/\.dxf$/i, "").replace(/[^\w-]+/g, "_") + ".json";
+const answers = () => JSON.stringify({file: SETUP.title, ...saved.form,
+  minutes_on_page: +((Date.now() - saved.started) / 60000).toFixed(1),
+  verdicts: Object.fromEntries(Object.entries(saved.items).filter(([, v]) => v.verdict || (v.comment || "").trim())
+    .map(([id, v]) => [`${id} | ${v.what}`, v])),
+  saved: new Date().toISOString()}, null, 1);
+const marked = () => Object.values(saved.items).filter(v => v.verdict).length;
+let handle = null, fileOk = false, asked = false, lastWrite = "";
+const canFile = "showSaveFilePicker" in window;
+function status() {
+  const n = marked(), time = lastWrite ? ` at ${lastWrite}` : "";
+  const where = fileOk ? `Saved to the file <b>${esc(handle.name)}</b>${time}.`
+    : canFile ? `Saved in this browser${time}. Choose a feedback file to also keep a copy on disk.`
+    : `Saved in this browser${time}. When you finish, press Download feedback and email the file.`;
+  $("status").innerHTML = `${n} element${n === 1 ? "" : "s"} marked. ${where}`;
+  $("status").className = fileOk ? "ok" : "warn"; $("choose").hidden = !canFile || fileOk;
+}
+// The file handle survives a reload in IndexedDB; the browser asks again for permission on the next click.
+const db = () => new Promise((ok, bad) => { const r = indexedDB.open("dxf2ifc", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("files"); r.onsuccess = () => ok(r.result); r.onerror = bad; });
+const keepHandle = async h => { try { (await db()).transaction("files", "readwrite").objectStore("files").put(h, KEY); } catch {} };
+const loadHandle = async () => { try { const s = (await db()).transaction("files").objectStore("files").get(KEY);
+  return await new Promise(ok => { s.onsuccess = () => ok(s.result || null); s.onerror = () => ok(null); }); } catch { return null; } };
+async function writeFile() {
+  if (!handle) return;
+  try {
+    if ((await handle.queryPermission({mode: "readwrite"})) !== "granted") { fileOk = false; return status(); }
+    const w = await handle.createWritable(); await w.write(answers()); await w.close();
+    fileOk = true;
+  } catch { fileOk = false; }
+  status();
+}
+async function chooseFile() {  // must run inside a click: the browser only shows its save dialog then
+  asked = true;
+  try { handle = await showSaveFilePicker({suggestedName: fileName, types: [{description: "Feedback", accept: {"application/json": [".json"]}}]});
+        keepHandle(handle); await writeFile(); } catch { status(); }
+}
+async function regain() {  // after a reload: one click gives the page its file back
+  if (handle && !fileOk) try { if ((await handle.requestPermission({mode: "readwrite"})) === "granted") await writeFile(); } catch {}
+}
+let timer = null;
+function store(now) {
+  try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {}
+  lastWrite = new Date().toTimeString().slice(0, 5);
+  clearTimeout(timer); timer = setTimeout(writeFile, now ? 0 : 600); status();
+}
+$("choose").onclick = chooseFile;
+$("download").onclick = () => {
+  const link = Object.assign(document.createElement("a"), {download: fileName, href: URL.createObjectURL(new Blob([answers()], {type: "application/json"}))});
+  document.body.appendChild(link); link.click(); link.remove();
+  $("status").innerHTML = `Downloaded <b>${esc(fileName)}</b> (usually in your Downloads folder). Please email it to the person who sent you this plan.`;
+};
+const form = $("form");
+for (const [name, value] of Object.entries(saved.form)) if (form.elements[name]) form.elements[name].value = value;
+form.oninput = () => { saved.form = Object.fromEntries(new FormData(form)); store(); };
+$("general").innerHTML = SETUP.general.length ? "<h2>About the whole drawing</h2><ul style='padding-left:18px;margin:4px 0'>"
+  + SETUP.general.map(g => `<li>${esc(g)}</li>`).join("") + "</ul>" : "";
+loadHandle().then(h => { handle = h; status(); if (h) writeFile(); });
+status();
+
+// ---------------------------------------------------------------- picking and describing
+let picked = null;
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let down = null;
+renderer.domElement.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
+  const shown = meshes.filter(m => m.parent.visible);
+  const hit = ray.intersectObjects(shown).find(h => h.object.userData.kind !== "rooms") || ray.intersectObjects(shown)[0];
+  if (hit) select(hit.object.userData.id, false);
+});
+const label = d => { const n = d.long_name || d.name, t = d.type.replace("Ifc", ""); return n.toLowerCase().startsWith(t.toLowerCase()) ? n : `${t} ${n}`.trim(); };
+function sensorRows(mesh) {
+  const r = reading(mesh.userData.id), el = $("sensorrows"); if (!el) return;
+  el.innerHTML = `<tr><td>Temperature</td><td>${r.temp.toFixed(1)} °C (simulated)</td></tr><tr><td>CO2</td><td>${Math.round(r.co2)} ppm (simulated)</td></tr>`;
+}
+function describe(mesh, counter = "") {
+  const d = mesh.userData, mine = saved.items[d.id] || {};
+  const rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
+    ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Source", d.source],
+    ["Printed area", d.printed_area ? d.printed_area + " m2" : ""]];
+  $("info").innerHTML = (counter ? `<p style="margin:0 0 4px"><b>${counter}</b></p>` : "")
+    + `<h2 style="margin-top:0">${esc(label(d))}</h2>`
+    + (NOTES[d.id] ? `<div class="why"><b>Why check:</b> ${esc(NOTES[d.id])}</div>` : "")
+    + `<p style="margin:6px 0 2px"><b>Is this element right?</b></p>`
+    + `<div class="row verdict" role="group" aria-label="Your verdict">`
+    + [["ok", "Correct"], ["wrong", "Wrong"], ["unsure", "Not sure"]].map(([v, t]) =>
+        `<button type="button" data-v="${v}" aria-pressed="${mine.verdict === v}">${t}</button>`).join("") + `</div>`
+    + `<label>Comment (optional)<textarea id="comment" rows="2">${esc(mine.comment || "")}</textarea></label>`
+    + `<details style="margin-top:6px"><summary>Details</summary><table>`
+    + rows.filter(r => r[1] !== "" && r[1] != null).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join("")
+    + `<tr><td>IFC GlobalId</td><td><code>${esc(d.id)}</code></td></tr><tbody id="sensorrows"></tbody></table></details>`;
+  if (sensorsOn && d.kind === "rooms") sensorRows(mesh);
+  const entry = () => saved.items[d.id] ||= {what: label(d), why: NOTES[d.id] || ""};
+  $("info").querySelectorAll(".verdict button").forEach(b => b.onclick = () => {
+    if (canFile && !handle && !asked) chooseFile();  // first answer: ask once where to keep the file
+    else regain();
+    Object.assign(entry(), {verdict: b.dataset.v, seconds: Math.round((Date.now() - saved.started) / 1000)});
+    $("info").querySelectorAll(".verdict button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    store(true);
+  });
+  $("comment").oninput = e => { entry().comment = e.target.value; store(); };
+}
+// viewer.html#<GlobalId> selects that element: links from the review page or a portal land on it
+function select(id, move = true, counter = "") {
+  const mesh = meshes.find(m => m.userData.id === id); if (!mesh) return false;
+  if (picked) picked.material.emissive.setHex(0);
+  picked = mesh; mesh.parent.visible = true; mesh.material.emissive.setHex(0x444444); describe(mesh, counter);
+  if (move) { const b = new THREE.Box3().setFromObject(mesh), c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length(), 4);
+    controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r, -r * 1.4, r * 1.2)); controls.update(); }
+  return true;
+}
+
+// ---------------------------------------------------------------- buttons and keys (everything works without a mouse)
+const fit = () => { controls.target.copy(centre); camera.position.copy(home); controls.update(); };
+const zoom = f => { camera.position.sub(controls.target).multiplyScalar(f).add(controls.target); controls.update(); };
+let step = -1;
+function stepThrough(dir) {
+  const want = $("filter").value;
+  const list = meshes.filter(m => want === "all" || (want === "check" ? NOTES[m.userData.id] : m.userData.level === want))
+    .sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1));
+  if (!list.length) { $("info").textContent = "Nothing in this list."; return; }
+  step = (step + dir + list.length) % list.length;
+  const done = list.filter(m => (saved.items[m.userData.id] || {}).verdict).length;
+  select(list[step].userData.id, true, `${step + 1} of ${list.length} (${done} answered)`);
+}
+$("fit").onclick = fit; $("zin").onclick = () => zoom(0.8); $("zout").onclick = () => zoom(1.25);
+$("next").onclick = () => stepThrough(1); $("prev").onclick = () => stepThrough(-1);
+$("filter").onchange = () => { step = -1; };
+controls.listenToKeyEvents(window);
+addEventListener("keydown", e => {
+  if (e.target.closest("input,select,textarea")) return;
+  const act = {"+": () => zoom(0.8), "=": () => zoom(0.8), "-": () => zoom(1.25), r: fit, R: fit,
+               n: () => stepThrough(1), N: () => stepThrough(1), p: () => stepThrough(-1), P: () => stepThrough(-1)}[e.key];
+  if (act) { act(); e.preventDefault(); }
+});
+const plan = $("planimg");
+if (plan) plan.onclick = () => $("planbox").classList.toggle("big"); else $("planbox").hidden = true;
+window.viewer = { select, meshes };
+const fromHash = () => location.hash.length > 1 && select(decodeURIComponent(location.hash.slice(1)));
+addEventListener("hashchange", fromHash); fromHash();
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+</script></body></html>

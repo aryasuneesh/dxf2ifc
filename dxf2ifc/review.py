@@ -153,6 +153,32 @@ def _ifc_ids(ifc_path, source_file) -> dict:
     return ids
 
 
+def review_list(plan) -> list[dict]:
+    """Flags an engineer should look at, least sure first; low-confidence elements nobody flagged are added."""
+    elements = {e["id"]: e for kind in ("walls", "openings", "rooms") for e in plan[kind]}
+    review = [f for f in plan["flags"] if f["severity"] == "review"]
+    flagged = {f["element_id"] for f in review}
+    for element in elements.values():
+        if element["confidence"] < config.CONF_MEDIUM and element["id"] not in flagged:
+            review.append({"element_id": element["id"], "severity": "review",
+                           "reason": LOW_REASONS.get(element["rule"], f"low confidence ({element['rule']})")})
+    review.sort(key=lambda f: elements[f["element_id"]]["confidence"] if f["element_id"] in elements else -1.0)
+    return review
+
+
+def viewer_notes(plan, ifc_path) -> tuple[dict, list]:
+    """What to check, for the 3D view: {IFC GlobalId: reason} per element, and reasons about the whole drawing."""
+    ids, notes, general = _ifc_ids(ifc_path, plan["source"]["file"]), {}, []
+    for flag in review_list(plan):
+        reason = flag["reason"][:1].upper() + flag["reason"][1:]
+        if flag["element_id"] in ids:
+            notes.setdefault(ids[flag["element_id"]], []).append(reason)
+        else:
+            general.append(reason)
+    general += [f"{what}: {value} ({why})" for what, value, why in _defaults(plan)]
+    return {gid: "; ".join(reasons) for gid, reasons in notes.items()}, general
+
+
 def _img(png: bytes, alt: str) -> str:
     return f'<img alt="{html.escape(alt)}" src="data:image/png;base64,{base64.b64encode(png).decode("ascii")}">'
 
@@ -320,14 +346,7 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
     out += [f"<tr><td>{esc(what)}</td><td>{esc(value)}</td><td>{esc(why)}</td></tr>" for what, value, why in _defaults(plan)]
     out.append("</table>")
 
-    review = [f for f in plan["flags"] if f["severity"] == "review"]
-    flagged = {f["element_id"] for f in review}
-    for element in elements.values():  # low-confidence elements nobody flagged still need a look
-        if element["confidence"] < config.CONF_MEDIUM and element["id"] not in flagged:
-            review.append({"element_id": element["id"], "severity": "review",
-                           "reason": LOW_REASONS.get(element["rule"], f"low confidence ({element['rule']})")})
-    rank = lambda f: elements[f["element_id"]]["confidence"] if f["element_id"] in elements else -1.0
-    review.sort(key=rank)
+    review = review_list(plan)
     out.append(f"<h2 id='review'>To review ({len(review)})</h2>")
     if not review:
         out.append("<p>Nothing was flagged.</p>")

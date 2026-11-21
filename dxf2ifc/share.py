@@ -29,16 +29,17 @@ def plans(root) -> list[str]:
 def index_page(names, offline=False) -> bytes:
     """Start page. Online: each plan opens side by side. Offline (zip sent by email): review page and 3D in two tabs."""
     e = html.escape
-    rows = "".join(f"<li><a href='{e(n)}/review.html'>{e(n)}</a> <span>(<a href='{e(n)}/viewer.html' target='viewer'>3D model</a>)</span></li>"
+    rows = "".join(f"<li><a href='{e(n)}/viewer.html'>{e(n)}</a> <span>(<a href='{e(n)}/review.html'>full report</a>)</span></li>"
                    if offline else
                    f"<li><a href='{e(n)}/compare.html'>{e(n)}</a> <span>(<a href='{e(n)}/review.html'>review page only</a> · "
                    f"<a href='{e(n)}/viewer.html'>3D only</a>)</span></li>" for n in names)
-    steps = ("<li>Unzip the whole folder first (opening files inside the zip does not work), then open a plan below. "
-             "The drawing and the list of things to check open in this tab; \"show in 3D\" opens the model in a second tab.</li>"
-             "<li>For each item in \"To review\", press Correct, Wrong or Not sure, and add a comment if you like. "
-             "Everything is saved automatically in your browser, so you can stop and come back.</li>"
-             "<li>At the bottom of the page, answer four short questions and press <b>Save feedback file</b>. "
-             "Email that file (one per plan) to the person who sent you this folder.</li>"
+    steps = ("<li>Unzip the whole folder first (opening files inside the zip does not work), then open a plan below "
+             "in Chrome or Edge. It opens as a 3D model with the 2D plan in the top right corner.</li>"
+             "<li>Press <b>Next</b> to go to each element the program is unsure about. Say if it is Correct, Wrong or "
+             "Not sure, and add a comment if you like. The first time, the browser asks where to save your feedback file: "
+             "pick a folder you will find again. Every answer is written to that file straight away.</li>"
+             "<li>At the end, open <b>Overall questions</b> on the left and answer them. Then email the feedback file "
+             "(one per plan) to the person who sent you this folder. In other browsers, press <b>Download feedback</b> to get the file.</li>"
              if offline else
              "<li>Open a plan. The drawing and a list of things to check are on the left, the 3D model on the right.</li>"
              "<li>For each item in \"To review\", press Correct, Wrong or Not sure, and add a comment if you like.</li>"

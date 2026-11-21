@@ -197,3 +197,7 @@ def test_share_site_serves_plans_and_saves_feedback(tmp_path):
     import zipfile
     names = zipfile.ZipFile(tmp_path / "site.zip").namelist()
     assert "site/share.py" in names and "site/plans/house/compare.html" in names and not any("plan.json" in n for n in names)
+    assert pack([tmp_path / "plans" / "house"], tmp_path / "mail.zip", offline=True) == ["house"]
+    names = zipfile.ZipFile(tmp_path / "mail.zip").namelist()
+    assert "dxf2ifc user test/START HERE.html" in names and "dxf2ifc user test/house/review.html" in names
+    assert not any(n.endswith(("share.py", "compare.html", "plan.json")) for n in names)

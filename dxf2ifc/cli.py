@@ -267,6 +267,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("share-pack", help="zip converted plans and the website file for hosting")
     p.add_argument("plans", nargs="+", help="output folders of `run`")
     p.add_argument("--zip", default="site.zip")
+    p.add_argument("--offline", action="store_true", help="a folder to email: start page, no server, feedback saved as files")
     args = parser.parse_args(argv)
     try:
         return _dispatch(args)
@@ -319,7 +320,7 @@ def _dispatch(args) -> int:
         print(f"mapping saved to {save_mapping(json.loads(Path(args.roles).read_text(encoding='utf-8')))}")
     elif args.command == "share-pack":
         from .share import pack
-        print(f"{args.zip}: {', '.join(pack(args.plans, args.zip))}")
+        print(f"{args.zip}: {', '.join(pack(args.plans, args.zip, offline=args.offline))}")
     elif args.command in ("serve", "share"):
         if args.command == "share":
             from .share import serve

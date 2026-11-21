@@ -26,10 +26,23 @@ def plans(root) -> list[str]:
     return sorted(p.name for p in Path(root).iterdir() if (p / "review.html").is_file())
 
 
-def index_page(root) -> bytes:
-    rows = "".join(f"<li><a href='{html.escape(name)}/compare.html'>{html.escape(name)}</a> "
-                   f"<span>(<a href='{html.escape(name)}/review.html'>review page only</a> · "
-                   f"<a href='{html.escape(name)}/viewer.html'>3D only</a>)</span></li>" for name in plans(root))
+def index_page(names, offline=False) -> bytes:
+    """Start page. Online: each plan opens side by side. Offline (zip sent by email): review page and 3D in two tabs."""
+    e = html.escape
+    rows = "".join(f"<li><a href='{e(n)}/review.html'>{e(n)}</a> <span>(<a href='{e(n)}/viewer.html' target='viewer'>3D model</a>)</span></li>"
+                   if offline else
+                   f"<li><a href='{e(n)}/compare.html'>{e(n)}</a> <span>(<a href='{e(n)}/review.html'>review page only</a> · "
+                   f"<a href='{e(n)}/viewer.html'>3D only</a>)</span></li>" for n in names)
+    steps = ("<li>Unzip the whole folder first (opening files inside the zip does not work), then open a plan below. "
+             "The drawing and the list of things to check open in this tab; \"show in 3D\" opens the model in a second tab.</li>"
+             "<li>For each item in \"To review\", press Correct, Wrong or Not sure, and add a comment if you like. "
+             "Everything is saved automatically in your browser, so you can stop and come back.</li>"
+             "<li>At the bottom of the page, answer four short questions and press <b>Save feedback file</b>. "
+             "Email that file (one per plan) to the person who sent you this folder.</li>"
+             if offline else
+             "<li>Open a plan. The drawing and a list of things to check are on the left, the 3D model on the right.</li>"
+             "<li>For each item in \"To review\", press Correct, Wrong or Not sure, and add a comment if you like.</li>"
+             "<li>At the bottom of the left side, answer four short questions and press Send feedback.</li>")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>DXF to IFC: user test</title>
 <style>:root{{color-scheme:light}} body{{font:17px/1.6 Segoe UI,Arial,sans-serif;color:#1c1c1c;background:#fff;
@@ -38,11 +51,10 @@ max-width:760px;margin:40px auto;padding:0 20px}} a{{color:#1d5fbf}} li{{margin:
 <h1>From a 2D plan to a model you can check</h1>
 <p>A program turned each drawing below into a 3D building model (IFC). We would like your opinion as an engineer.</p>
 <div class="box"><b>What to do (about 10 minutes per plan)</b><ol>
-<li>Open a plan. The drawing and a list of things to check are on the left, the 3D model on the right.</li>
-<li>For each item in "To review", press Correct, Wrong or Not sure, and add a comment if you like.</li>
-<li>At the bottom of the left side, answer four short questions and press Send feedback.</li></ol></div>
+{steps}</ol></div>
 <h2>Plans</h2><ul>{rows or "<li>No plans yet.</li>"}</ul>
-<p><span>On a small screen, use "review page only"; its "show in 3D" links open the model in a new tab.</span></p>
+<p><span>{"Nothing on these pages is sent anywhere; works without internet." if offline else
+'On a small screen, use "review page only"; its "show in 3D" links open the model in a new tab.'}</span></p>
 </body></html>""".encode("utf-8")
 
 
@@ -82,7 +94,7 @@ def make_app(root, password=None):
         if method not in ("GET", "HEAD"):
             return reply("405 Method Not Allowed", b"not allowed")
         if path == "/":
-            return reply("200 OK", index_page(root), "text/html; charset=utf-8")
+            return reply("200 OK", index_page(plans(root)), "text/html; charset=utf-8")
         match = re.fullmatch(r"/([\w.-]+)/([\w.]+)", path)
         if match and not match.group(1).startswith(".") and match.group(2) in FILES:
             target = root / match.group(1) / match.group(2)
@@ -93,19 +105,24 @@ def make_app(root, password=None):
     return app
 
 
-def pack(plan_dirs, zip_path) -> list[str]:
-    """Zip what the website needs: this file plus, per plan, the pages and IFC files (no plan.json, no DXF)."""
-    names = []
+def pack(plan_dirs, zip_path, offline=False) -> list[str]:
+    """Zip converted plans (pages and IFC files; no plan.json, no DXF).
+    Default: for hosting, with this file as the website. offline=True: to email, with a start page instead."""
+    folders = [Path(f) for f in plan_dirs]
+    for folder in folders:
+        if not (folder / "review.html").is_file():
+            raise ValueError(f"{folder} has no review.html; run the plan first")
+    top, files = ("dxf2ifc user test", ("review.html", "viewer.html", "model.ifc")) if offline else ("site/plans", FILES)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.write(__file__, "site/share.py")
-        for folder in map(Path, plan_dirs):
-            if not (folder / "review.html").is_file():
-                raise ValueError(f"{folder} has no review.html; run the plan first")
-            for name in FILES:
+        if offline:
+            archive.writestr(f"{top}/START HERE.html", index_page([f.name for f in folders], offline=True))
+        else:
+            archive.write(__file__, "site/share.py")
+        for folder in folders:
+            for name in files:
                 if (folder / name).is_file():
-                    archive.write(folder / name, f"site/plans/{folder.name}/{name}")
-            names.append(folder.name)
-    return names
+                    archive.write(folder / name, f"{top}/{folder.name}/{name}")
+    return [f.name for f in folders]
 
 
 def serve(root, port=8000, password=None, host="127.0.0.1"):

@@ -7,6 +7,7 @@ One self-contained HTML file: images are embedded, there is no script and no out
 
 import base64
 import html
+import json
 import io
 import math
 from collections import Counter
@@ -176,8 +177,9 @@ def _defaults(plan) -> list[tuple[str, str, str]]:
     return rows
 
 
-FEEDBACK = """<h2 id='send'>Send your feedback</h2>
-<p class='meta'>Your marks and comments above are kept in this browser until you send them.</p>
+FEEDBACK = r"""<h2 id='send'>Send your feedback</h2>
+<p class='meta'>Everything you type or mark on this page is saved automatically in this browser, so you can close it
+and come back later. When you are done, answer the questions below and press the button.</p>
 <form id='feedback'>
 <p><label>Your name or initials (optional)<br><input name='name' size='30' autocomplete='name'></label></p>
 <p><label>Your role<br><select name='role'><option>Structural engineer</option>
@@ -188,43 +190,62 @@ FEEDBACK = """<h2 id='send'>Send your feedback</h2>
 <p><label>What would you not trust?<br><textarea name='distrust' rows='3'></textarea></label></p>
 <p><label>What should change first?<br><textarea name='change' rows='3'></textarea></label></p>
 <p><label>Any other remarks or comments<br><textarea name='remarks' rows='4'></textarea></label></p>
-<p><button type='submit' class='primary'>Send feedback</button> <span id='sent' role='status'></span></p></form>
-<div id='progress' role='status'><span id='count'></span> <a href='#send'>Send feedback</a></div>
+<p><button type='submit' class='primary' id='go'>Send feedback</button></p>
+<p id='sent' role='status'></p>
+<div id='copy' hidden><p><label>Or copy this text into your email<br><textarea id='answers' rows='6' readonly></textarea></label></p>
+<p><button type='button' id='copybtn'>Copy text</button></p></div></form>
+<div id='progress' role='status'><span id='count'></span> <span id='autosave'></span> <a href='#send'>Send feedback</a></div>
 <script>
-const opened = Date.now(), KEY = 'dxf2ifc:' + location.pathname, items = [...document.querySelectorAll('.item')];
+const FILE = __FILE__, LOCAL = location.protocol === 'file:';
+const KEY = 'dxf2ifc:' + FILE + ':' + location.pathname, items = [...document.querySelectorAll('.item')];
+const form = document.getElementById('feedback'), $ = id => document.getElementById(id);
+if (LOCAL) $('go').textContent = 'Save feedback file';
 const keyOf = item => item.dataset.id + ' | ' + item.dataset.reason;
 let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
-const store = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {} };
+saved.__started ||= Date.now();
+const store = () => { try { localStorage.setItem(KEY, JSON.stringify(saved));
+  $('autosave').textContent = '· saved automatically ' + new Date().toTimeString().slice(0, 5); } catch {
+  $('autosave').textContent = '· this browser cannot keep your answers: send them before closing'; } };
 const count = () => { const n = items.filter(i => (saved[keyOf(i)] || {}).verdict).length;
-  document.getElementById('count').textContent = n + ' of ' + items.length + ' items marked'; };
+  $('count').textContent = n + ' of ' + items.length + ' items marked'; };
 const show = item => { const v = (saved[keyOf(item)] || {}).verdict;
   item.querySelectorAll('.verdict button').forEach(b => { b.classList.toggle('on', b.dataset.v === v); b.setAttribute('aria-pressed', b.dataset.v === v); }); };
 for (const item of items) {
   const entry = () => saved[keyOf(item)] ||= {};
   item.querySelectorAll('.verdict button').forEach(button => button.onclick = () => {
-    Object.assign(entry(), {verdict: button.dataset.v, seconds: Math.round((Date.now() - opened) / 1000)}); store(); show(item); count(); });
+    Object.assign(entry(), {verdict: button.dataset.v, seconds: Math.round((Date.now() - saved.__started) / 1000)}); store(); show(item); count(); });
   const note = item.querySelector('textarea');
   note.value = (saved[keyOf(item)] || {}).comment || '';
   note.oninput = () => { entry().comment = note.value; store(); };
   show(item);
 }
+for (const [name, value] of Object.entries(saved.__form || {})) if (form.elements[name]) form.elements[name].value = value;
+form.oninput = event => { if (event.target.name) { saved.__form = Object.fromEntries(new FormData(form)); store(); } };
 count();
-document.getElementById('feedback').onsubmit = async event => {
+const answers = () => JSON.stringify({file: FILE, ...Object.fromEntries(new FormData(form)),
+  minutes_on_page: +((Date.now() - saved.__started) / 60000).toFixed(1),
+  verdicts: Object.fromEntries(Object.entries(saved).filter(([k, v]) => !k.startsWith('__') && (v.verdict || (v.comment || '').trim()))),
+  sent: new Date().toISOString()}, null, 1);
+const download = body => {
+  const name = 'feedback-' + FILE.replace(/\.dxf$/i, '').replace(/[^\w-]+/g, '_') + '-' + new Date().toISOString().slice(0, 16).replace(/\D/g, '') + '.json';
+  const link = Object.assign(document.createElement('a'), {download: name, href: URL.createObjectURL(new Blob([body], {type: 'application/json'}))});
+  document.body.appendChild(link); link.click(); link.remove();
+  $('answers').value = body; $('copy').hidden = false;
+  return name;
+};
+$('copybtn').onclick = async () => { $('answers').select();
+  try { await navigator.clipboard.writeText($('answers').value); } catch { document.execCommand('copy'); }
+  $('copybtn').textContent = 'Copied'; };
+form.onsubmit = async event => {
   event.preventDefault();
-  const answers = Object.fromEntries(new FormData(event.target));
-  const verdicts = Object.fromEntries(Object.entries(saved).filter(([, v]) => v.verdict || (v.comment || '').trim()));
-  const body = JSON.stringify({file: '__FILE__', page: location.pathname, minutes_on_page: +((Date.now() - opened) / 60000).toFixed(1),
-                               ...answers, verdicts, sent: new Date().toISOString()});
-  const note = document.getElementById('sent');
-  try {
+  const body = answers();
+  if (!LOCAL) try {
     const reply = await fetch('/feedback', {method: 'POST', body, headers: {'Content-Type': 'application/json'}});
-    if (!reply.ok) throw new Error();
-    note.textContent = 'Saved. Thank you.'; saved = {}; store();
-  } catch {
-    const link = Object.assign(document.createElement('a'), {download: 'feedback-' + Date.now() + '.json',
-      href: URL.createObjectURL(new Blob([body], {type: 'application/json'}))});
-    link.click(); note.textContent = 'Could not reach the server, so your answers were downloaded as a file. Please send it to the team.';
-  }
+    if (reply.ok) { $('sent').textContent = 'Saved on the server. Thank you.'; return; }
+  } catch {}
+  const name = download(body);
+  $('sent').innerHTML = '<b>Your answers were saved as a file named ' + name + '</b> (usually in your Downloads folder). '
+    + 'Please email that file to the person who sent you this plan. Your answers also stay on this page, so you can change them and save again.';
 };
 </script>"""
 
@@ -374,7 +395,7 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
     if info:
         out.append(f"<details><summary>Other notes ({len(info)})</summary><ul>")
         out += [f"<li>{esc(f['reason'])}</li>" for f in info] + ["</ul></details>"]
-    out.append(FEEDBACK.replace("__FILE__", esc(source["file"])))
+    out.append(FEEDBACK.replace("__FILE__", json.dumps(source["file"]).replace("</", "<\\/")))
     out.append("</body></html>")
 
     out_path = Path(out_path)

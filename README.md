@@ -64,6 +64,16 @@ Testers use the review page from the try-it server; their answers land in `out\w
 
 How to run a test and where to record it: `docs/USER_TESTS.md`.
 
+## Send to testers by email (no server)
+
+```bash
+.venv\Scripts\python -m dxf2ifc share-pack out\plan_a out\plan_b --offline --zip "out\dxf2ifc user test.zip"
+```
+
+Testers unzip it and open `START HERE.html`. Everything they mark or type is saved automatically in their browser.
+At the end they press **Save feedback file** and email that small file back (or paste the text it shows).
+Sum up the files you receive with `python -m dxf2ifc feedback feedback-*.json`.
+
 ## Share with testers online
 
 `share-pack` zips converted plans with a small website (review, 3D, side by side, feedback form with comments);

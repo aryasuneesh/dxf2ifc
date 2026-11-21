@@ -187,15 +187,20 @@ def feedback_summary(paths) -> str:
         rows += [json.loads(line) for line in text.splitlines() if line.strip()] if path.endswith(".jsonl") else [json.loads(text)]
     if not rows:
         return "no feedback yet"
-    verdicts = [v["verdict"] for row in rows for v in row.get("verdicts", {}).values()]
+    verdicts = [v.get("verdict") for row in rows for v in row.get("verdicts", {}).values() if v.get("verdict")]
     useful = [int(row["useful"]) for row in rows if str(row.get("useful", "")).isdigit()]
     lines = [f"Testers: {len(rows)} ({', '.join(f'{n} {role}' for role, n in Counter(r.get('role', '?') for r in rows).most_common())})",
              f"Usefulness: mean {sum(useful) / len(useful):.1f} of 5" if useful else "Usefulness: no answers",
-             f"Items judged: {len(verdicts)}, wrong {verdicts.count('wrong')}, correct {verdicts.count('ok')}",
+             f"Items judged: {len(verdicts)}, wrong {verdicts.count('wrong')}, correct {verdicts.count('ok')}, "
+             f"not sure {verdicts.count('unsure')}",
              f"Minutes on page: median {sorted(r.get('minutes_on_page', 0) for r in rows)[len(rows) // 2]}"]
-    for key, title in (("distrust", "Would not trust"), ("change", "Change first")):
+    for key, title in (("distrust", "Would not trust"), ("change", "Change first"), ("remarks", "Other remarks")):
         notes = [r[key].strip() for r in rows if r.get(key, "").strip()]
         lines += [f"{title}:"] + [f"  - {note}" for note in notes]
+    comments = [(r.get("file", "?"), item, v) for r in rows for item, v in r.get("verdicts", {}).items()
+                if (v.get("comment") or "").strip()]
+    lines += ["Comments on items:"] + [f"  - {file} | {item} [{v.get('verdict') or 'no verdict'}]: {v['comment'].strip()}"
+                                       for file, item, v in comments]
     return "\n".join(lines)
 
 
@@ -255,6 +260,13 @@ def main(argv=None) -> int:
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--out", default="out/web")
 
+    p = sub.add_parser("share", help="website for testers: converted plans plus feedback, no upload")
+    p.add_argument("folder", help="folder with one subfolder per converted plan")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--password", help="ask every visitor for this password")
+    p = sub.add_parser("share-pack", help="zip converted plans and the website file for hosting")
+    p.add_argument("plans", nargs="+", help="output folders of `run`")
+    p.add_argument("--zip", default="site.zip")
     args = parser.parse_args(argv)
     try:
         return _dispatch(args)
@@ -305,8 +317,15 @@ def _dispatch(args) -> int:
     elif args.command == "save-mapping":
         from .roles import save_mapping
         print(f"mapping saved to {save_mapping(json.loads(Path(args.roles).read_text(encoding='utf-8')))}")
-    elif args.command == "serve":
-        server = make_server(args.out, args.port)
+    elif args.command == "share-pack":
+        from .share import pack
+        print(f"{args.zip}: {', '.join(pack(args.plans, args.zip))}")
+    elif args.command in ("serve", "share"):
+        if args.command == "share":
+            from .share import serve
+            server = serve(args.folder, args.port, args.password)
+        else:
+            server = make_server(args.out, args.port)
         print(f"Open http://127.0.0.1:{args.port} in a browser. Press Ctrl+C to stop.")
         try:
             server.serve_forever()

@@ -176,58 +176,84 @@ def _defaults(plan) -> list[tuple[str, str, str]]:
     return rows
 
 
-FEEDBACK = """<h2>Your feedback</h2>
-<p class='meta'>For user tests. Mark items above as correct or wrong, then fill this in. Nothing is sent anywhere
-except the local try-it server; opened as a file, the page downloads your answers as a small JSON file instead.</p>
-<form id='feedback'><p><label>Your role <select name='role'><option>Structural engineer</option>
+FEEDBACK = """<h2 id='send'>Send your feedback</h2>
+<p class='meta'>Your marks and comments above are kept in this browser until you send them.</p>
+<form id='feedback'>
+<p><label>Your name or initials (optional)<br><input name='name' size='30' autocomplete='name'></label></p>
+<p><label>Your role<br><select name='role'><option>Structural engineer</option>
 <option>MEP engineer</option><option>Architect</option><option>BIM modeller</option><option>Project manager</option>
 <option>Facility manager</option><option>Student or other</option></select></label></p>
-<p><label>Compared with redrawing the plan by hand, how useful is this? (1 = not at all, 5 = very)
+<p><label>Compared with redrawing the plan by hand, how useful is this? (1 = not at all, 5 = very)<br>
 <input type='number' name='useful' min='1' max='5' required></label></p>
-<p><label>What would you not trust?<br><textarea name='distrust' rows='3' cols='70'></textarea></label></p>
-<p><label>What should change first?<br><textarea name='change' rows='3' cols='70'></textarea></label></p>
-<p><button type='submit'>Send feedback</button> <span id='sent'></span></p></form>
+<p><label>What would you not trust?<br><textarea name='distrust' rows='3'></textarea></label></p>
+<p><label>What should change first?<br><textarea name='change' rows='3'></textarea></label></p>
+<p><label>Any other remarks or comments<br><textarea name='remarks' rows='4'></textarea></label></p>
+<p><button type='submit' class='primary'>Send feedback</button> <span id='sent' role='status'></span></p></form>
+<div id='progress' role='status'><span id='count'></span> <a href='#send'>Send feedback</a></div>
 <script>
-const opened = Date.now(), verdicts = {};
-document.querySelectorAll('.item .verdict button').forEach(button => button.onclick = () => {
-  const item = button.closest('.item');
-  verdicts[item.dataset.id + ' | ' + item.dataset.reason] = {verdict: button.dataset.v, seconds: Math.round((Date.now() - opened) / 1000)};
-  item.querySelectorAll('.verdict button').forEach(b => b.classList.toggle('on', b === button));
-});
+const opened = Date.now(), KEY = 'dxf2ifc:' + location.pathname, items = [...document.querySelectorAll('.item')];
+const keyOf = item => item.dataset.id + ' | ' + item.dataset.reason;
+let saved = {}; try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch {}
+const store = () => { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {} };
+const count = () => { const n = items.filter(i => (saved[keyOf(i)] || {}).verdict).length;
+  document.getElementById('count').textContent = n + ' of ' + items.length + ' items marked'; };
+const show = item => { const v = (saved[keyOf(item)] || {}).verdict;
+  item.querySelectorAll('.verdict button').forEach(b => { b.classList.toggle('on', b.dataset.v === v); b.setAttribute('aria-pressed', b.dataset.v === v); }); };
+for (const item of items) {
+  const entry = () => saved[keyOf(item)] ||= {};
+  item.querySelectorAll('.verdict button').forEach(button => button.onclick = () => {
+    Object.assign(entry(), {verdict: button.dataset.v, seconds: Math.round((Date.now() - opened) / 1000)}); store(); show(item); count(); });
+  const note = item.querySelector('textarea');
+  note.value = (saved[keyOf(item)] || {}).comment || '';
+  note.oninput = () => { entry().comment = note.value; store(); };
+  show(item);
+}
+count();
 document.getElementById('feedback').onsubmit = async event => {
   event.preventDefault();
   const answers = Object.fromEntries(new FormData(event.target));
+  const verdicts = Object.fromEntries(Object.entries(saved).filter(([, v]) => v.verdict || (v.comment || '').trim()));
   const body = JSON.stringify({file: '__FILE__', page: location.pathname, minutes_on_page: +((Date.now() - opened) / 60000).toFixed(1),
                                ...answers, verdicts, sent: new Date().toISOString()});
   const note = document.getElementById('sent');
   try {
     const reply = await fetch('/feedback', {method: 'POST', body, headers: {'Content-Type': 'application/json'}});
     if (!reply.ok) throw new Error();
-    note.textContent = 'Saved. Thank you.';
+    note.textContent = 'Saved. Thank you.'; saved = {}; store();
   } catch {
     const link = Object.assign(document.createElement('a'), {download: 'feedback-' + Date.now() + '.json',
       href: URL.createObjectURL(new Blob([body], {type: 'application/json'}))});
-    link.click(); note.textContent = 'Downloaded feedback file. Please send it to the team.';
+    link.click(); note.textContent = 'Could not reach the server, so your answers were downloaded as a file. Please send it to the team.';
   }
 };
 </script>"""
 
 STYLE = """
-:root{color-scheme:light} html{background:#fff}
-body{font:16px/1.5 Segoe UI,Arial,sans-serif;color:#1c1c1c;background:#fff;max-width:1100px;margin:24px auto;padding:0 20px}
-h1{font-size:26px;margin:0 0 4px} h2{font-size:20px;margin:34px 0 10px;border-bottom:2px solid #ddd;padding-bottom:4px}
+:root{color-scheme:light} html{background:#fff;scroll-behavior:smooth}
+body{font:17px/1.6 Segoe UI,Arial,sans-serif;color:#1c1c1c;background:#fff;max-width:1000px;margin:0 auto;padding:0 20px 80px}
+h1{font-size:28px;margin:24px 0 4px;word-break:break-word} h2{font-size:22px;margin:40px 0 12px;border-bottom:2px solid #ddd;padding-bottom:4px}
+nav{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:8px 0;z-index:2;font-size:15px}
+nav a{margin-right:14px;white-space:nowrap}
+a{color:#1d5fbf} :focus-visible{outline:3px solid #1d5fbf;outline-offset:2px}
 .badge{display:inline-block;background:#c62828;color:#fff;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:.5px}
+.howto{background:#eef4fc;border-left:5px solid #1d5fbf;padding:10px 16px;margin:16px 0} .howto ol{margin:6px 0;padding-left:22px}
 .warn{background:#fff3cd;border-left:5px solid #e0a800;padding:8px 12px;margin:8px 0}
-table{border-collapse:collapse;width:100%;margin:6px 0} th,td{border:1px solid #ccc;padding:5px 9px;text-align:left;vertical-align:top}
-th{background:#f1f1f1} img{max-width:100%;border:1px solid #ccc}
-.dot{display:inline-block;width:13px;height:13px;border-radius:50%;margin:0 5px 0 14px;vertical-align:middle}
-.item{display:flex;gap:16px;border:1px solid #ccc;border-radius:6px;padding:10px;margin:10px 0}
-.item img{width:300px;flex:none} .item p{margin:0 0 6px} .meta{color:#555;font-size:14px}
+table{border-collapse:collapse;width:100%;margin:6px 0;font-size:16px} th,td{border:1px solid #ccc;padding:6px 10px;text-align:left;vertical-align:top}
+th{background:#f1f1f1} img{max-width:100%;height:auto;border:1px solid #ccc}
+.dot{display:inline-block;width:14px;height:14px;border-radius:50%;margin:0 6px 0 14px;vertical-align:middle;border:1px solid #0003}
+.item{display:flex;flex-wrap:wrap;gap:18px;border:1px solid #c9c9c9;border-radius:8px;padding:14px;margin:14px 0}
+.item img{width:300px;flex:none} .item>div{flex:1;min-width:260px} .item p{margin:0 0 8px} .meta{color:#4d4d4d;font-size:15px}
 .pass{color:#1b7a33;font-weight:700} .fail{color:#c62828;font-weight:700} .na{color:#666}
-code{background:#f1f1f1;padding:1px 4px;border-radius:3px}
-.verdict button{font:inherit;font-size:14px;padding:3px 10px;border:1px solid #999;border-radius:4px;background:#fff;cursor:pointer}
-.verdict button.on[data-v=ok]{background:#1b7a33;color:#fff} .verdict button.on[data-v=wrong]{background:#c62828;color:#fff}
-#feedback textarea,#feedback select,#feedback input{font:inherit;max-width:100%}
+code{background:#f1f1f1;padding:1px 4px;border-radius:3px;font-size:14px;word-break:break-all}
+button{font:inherit;font-size:16px;padding:5px 14px;border:1px solid #777;border-radius:5px;background:#fff;color:#1c1c1c;cursor:pointer}
+.verdict button.on[data-v=ok]{background:#1b7a33;color:#fff;border-color:#1b7a33}
+.verdict button.on[data-v=wrong]{background:#c62828;color:#fff;border-color:#c62828}
+.verdict button.on[data-v=unsure]{background:#5f6368;color:#fff;border-color:#5f6368}
+.item textarea{width:100%;box-sizing:border-box;font:inherit;font-size:15px}
+#feedback textarea,#feedback input,#feedback select{font:inherit;width:100%;max-width:640px;box-sizing:border-box}
+#feedback input[type=number]{width:90px} button.primary{background:#1d5fbf;color:#fff;border-color:#1d5fbf}
+#progress{position:fixed;bottom:0;left:0;right:0;background:#1c2a44;color:#fff;padding:8px 16px;text-align:center;font-size:15px}
+#progress a{color:#fff;font-weight:700;margin-left:12px}
 """
 
 
@@ -239,7 +265,11 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
     levels = Counter(level(e["confidence"]) for e in elements.values())
     kinds = Counter(o["kind"] for o in plan["openings"])
     out = [f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Review: {esc(source['file'])}</title>",
+           "<meta name='viewport' content='width=device-width,initial-scale=1'>",
            f"<style>{STYLE}</style></head><body>",
+           "<nav aria-label='Sections'><a href='#plan'>Plan</a><a href='#assumed'>Assumed values</a>"
+           "<a href='#review'>To review</a><a href='#rooms'>Rooms</a><a href='#checks'>Requirements</a>"
+           "<a href='viewer.html' target='viewer'>3D view</a><a href='#send'>Send feedback</a></nav>",
            f"<h1>{esc(source['file'])}</h1>",
            f"<p><span class='badge'>TO BE VERIFIED</span> &nbsp; Storey <b>{esc(storey['name'])}</b> &middot; "
            f"made on {date.today().isoformat()} &middot; this model was built by a program from the 2D drawing. "
@@ -249,17 +279,23 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
     for name, label in (("high", "High confidence"), ("medium", "Medium"), ("low", "Low")):
         out.append(f"<span class='dot' style='background:{HEX[name]}'></span>{label}: <b>{levels[name]}</b>")
     out.append("</p>")
+    out.append("<div class='howto'><b>How to give feedback (about 10 minutes)</b><ol>"
+               "<li>Look at the plan: is anything missing or in the wrong place?</li>"
+               "<li>Go through <a href='#review'>To review</a>. For each item press Correct, Wrong or Not sure, "
+               "and add a comment if you want. \"show in 3D\" opens the element in the 3D view.</li>"
+               "<li>At the bottom, answer four short questions and press <a href='#send'>Send feedback</a>.</li></ol>"
+               "Your marks are kept in this browser until you send them.</div>")
 
     for flag in plan["flags"]:  # things about the whole file come first
         if flag["element_id"] == "file" and flag["severity"] == "review" and flag["reason"].startswith(
                 ("layers carry no meaning", "units guessed", "no closed room", "no walls", "stopped after")):
             out.append(f"<div class='warn'>{esc(flag['reason'][:1].upper() + flag['reason'][1:])}.</div>")
 
-    out += ["<h2>The plan</h2>", _img(plan_image(plan, _lines=lines), "plan coloured by confidence"),
+    out += ["<h2 id='plan'>The plan</h2>", _img(plan_image(plan, _lines=lines), "plan coloured by confidence"),
             "<p class='meta'>Walls are filled in their confidence colour, rooms are tinted, openings are white boxes. "
             "Grey lines are the original drawing.</p>"]
 
-    out += ["<h2>Values that were assumed</h2>", "<table><tr><th>What</th><th>Value used</th><th>Where it comes from</th></tr>"]
+    out += ["<h2 id='assumed'>Values that were assumed</h2>", "<table><tr><th>What</th><th>Value used</th><th>Where it comes from</th></tr>"]
     out += [f"<tr><td>{esc(what)}</td><td>{esc(value)}</td><td>{esc(why)}</td></tr>" for what, value, why in _defaults(plan)]
     out.append("</table>")
 
@@ -271,7 +307,7 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
                            "reason": LOW_REASONS.get(element["rule"], f"low confidence ({element['rule']})")})
     rank = lambda f: elements[f["element_id"]]["confidence"] if f["element_id"] in elements else -1.0
     review.sort(key=rank)
-    out.append(f"<h2>To review ({len(review)})</h2>")
+    out.append(f"<h2 id='review'>To review ({len(review)})</h2>")
     if not review:
         out.append("<p>Nothing was flagged.</p>")
     crops = 0
@@ -297,10 +333,13 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
         out.append(f'<div class="item" data-id="{esc(eid)}" data-reason="{esc(reason[:80])}">'
                    f"{picture}<div><p><b>{esc(reason)}.</b></p>"
                    f"<p class='meta'>{'<br>'.join(meta)}</p>"
-                   "<p class='verdict'><button type='button' data-v='ok'>Correct</button> "
-                   "<button type='button' data-v='wrong'>Wrong</button></p></div></div>")
+                   f"<p class='verdict' role='group' aria-label='Your verdict on: {esc(reason[:80])}'>"
+                   "<button type='button' data-v='ok' aria-pressed='false'>Correct</button> "
+                   "<button type='button' data-v='wrong' aria-pressed='false'>Wrong</button> "
+                   "<button type='button' data-v='unsure' aria-pressed='false'>Not sure</button></p>"
+                   "<label class='meta'>Comment (optional)<textarea rows='2'></textarea></label></div></div>")
 
-    out += ["<h2>Rooms</h2>", "<table><tr><th>Room</th><th>Computed m2</th><th>Printed m2</th><th>Difference</th>"
+    out += ["<h2 id='rooms'>Rooms</h2>", "<table><tr><th>Room</th><th>Computed m2</th><th>Printed m2</th><th>Difference</th>"
                               "<th>Confidence</th></tr>"]
     for room in sorted(plan["rooms"], key=lambda r: r["confidence"]):
         printed = room["area_printed_m2"]
@@ -321,7 +360,7 @@ def write_review(plan, checks, out_path, drawing=None, ifc_path=None) -> Path:
                 f"The first {len(unused)}:</p>", "<p class='meta'>" + " &middot; ".join(esc(t) for t in unused) + "</p>"]
 
     if checks:
-        out += ["<h2>Minimum requirements</h2>",
+        out += ["<h2 id='checks'>Minimum requirements</h2>",
                 "<table><tr><th></th><th>Requirement</th><th>Result</th><th>Needed</th><th></th></tr>"]
         for c in checks:
             mark = {True: "<span class='pass'>pass</span>", False: "<span class='fail'>fail</span>",

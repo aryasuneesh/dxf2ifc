@@ -89,7 +89,7 @@ Status: **done**, **partly** (works, with a known limit), **open** (not started)
 3. **Reference IFC**: no matching DXF; not expected. The printed-area check stands in for it.
 4. **IFC files** load in Bonsai Viewer 0.9.0 (IFC4 and IFC2X3, 21 Nov); a person still has to check them element by element, and Revit is untested.
 5. **Deployment story** for Azure / Databricks (container + API) is not written.
-6. **The 3D view loads three.js from a CDN**: the demo laptop needs internet, or a cached copy.
+6. ~~3D view needs internet~~: three.js is now inside the page (21 Nov).
 
 ## 4. Log
 
@@ -97,3 +97,4 @@ Status: **done**, **partly** (works, with a known limit), **open** (not started)
 - **16 Nov**: walls, openings, door swings, rooms, storey and slab; IFC4 writer with trust properties and stable IDs; dataset triage (text and binary DXF); batch runner; requirement checks R1–R12 and review page; command line, storey merge and local try-it page; README. First dataset run.
 - **19 Nov, morning**: room fixes. Raster bias removed (rooms came out ~2 % small). Buildings drawn in loose pieces are kept whole (one sheet had lost 1,218 walls). Window lines close glazed facades. AIA hatch (`-PATT`) and column (`COLS`) layers recognised. Repo on GitHub.
 - **19 Nov, afternoon**: MIT licence. LLM step tested on free tiers with a synthetic plan (Groq `qwen/qwen3.8-27b`: 5 of 5 layers right in 0.3 s; rules alone: 1 of 5). IFC2X3 written next to IFC4. 3D browser viewer with confidence colours, element details and links by GlobalId. Stairs (stair layers, tread runs) and an assumed flat roof on merged buildings. Fire-safety symbols. Simulated room sensors. Correct/Wrong buttons and a feedback form on the review page, `feedback` command, user-test protocol. Pitch outline. Dataset re-run from a frozen copy of the code (§2).
+- **21 Nov**: pitch numbers filled; demo plans chosen and re-run; draft slides. Plan and 3D side by side (`compare.html`). IFC loads in Bonsai Viewer. 3D view works offline, with buttons and keys. Review page easier to read: section links, how-to box, Not sure button, comment per item, general remarks, marks kept in the browser until sent. Test website (`share`, `share-pack`) with password and feedback file, hosting steps for free PythonAnywhere in `HOSTING.md`.

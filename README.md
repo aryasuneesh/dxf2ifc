@@ -22,14 +22,15 @@ Python 3.13 on Windows is what it was built and tested on.
 .venv\Scripts\python -m dxf2ifc run plan.dxf --out out\plan
 ```
 
-This writes six files into `out\plan`:
+This writes seven files into `out\plan`:
 
 | File | What it is |
 |---|---|
 | `model.ifc` | The IFC4 model. Elements are coloured by confidence in any viewer. |
 | `model_ifc2x3.ifc` | The same model in IFC2X3, the format of SECO's reference models. |
 | `review.html` | Open this first. The plan, the assumed values, the list of things to check, each with a link to it in 3D. Testers mark items correct or wrong and leave feedback at the bottom. |
-| `viewer.html` | The model in 3D in the browser, coloured by confidence. Click an element for its IFC id, rule and source. `viewer.html#<GlobalId>` jumps to one element. A switch shows simulated room sensors bound to each room's id. |
+| `viewer.html` | The model in 3D in the browser, coloured by confidence. Works offline (three.js is inside the file); buttons and keys for zoom and stepping through low-confidence elements. Click an element for its IFC id, rule and source. `viewer.html#<GlobalId>` jumps to one element. A switch shows simulated room sensors bound to each room's id. |
+| `compare.html` | The review page and the 3D view side by side (open it through `serve` or `share`). |
 | `plan.json` | The same content as plain data. |
 | `roles.json` | What each drawing layer was taken to mean. |
 
@@ -62,6 +63,15 @@ Testers use the review page from the try-it server; their answers land in `out\w
 ```
 
 How to run a test and where to record it: `docs/USER_TESTS.md`.
+
+## Share with testers online
+
+`share-pack` zips converted plans with a small website (review, 3D, side by side, feedback form with comments);
+`share` runs the same site locally. Free hosting steps on PythonAnywhere: `docs/HOSTING.md`.
+
+```bash
+.venv\Scripts\python -m dxf2ifc share-pack out\plan_a out\plan_b --zip out\site.zip
+```
 
 ## Other commands
 

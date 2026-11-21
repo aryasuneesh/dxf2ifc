@@ -166,3 +166,34 @@ def test_review_page_has_verdicts_and_form(tmp_path):
     cli.main(["run", str(tmp_path / "h.dxf"), "--out", str(tmp_path / "o")])
     page = (tmp_path / "o" / "review.html").read_text(encoding="utf-8")
     assert "data-v='wrong'" in page and "id='feedback'" in page and "viewer.html" in page
+
+
+def test_share_site_serves_plans_and_saves_feedback(tmp_path):
+    import base64
+    import io
+    from dxf2ifc.share import make_app, pack
+    make_house(tmp_path / "house.dxf")
+    assert cli.main(["run", str(tmp_path / "house.dxf"), "--out", str(tmp_path / "plans" / "house")]) == 0
+    app = make_app(tmp_path / "plans", password="pw")
+
+    def call(path, method="GET", body=b"", password="pw"):
+        seen = {}
+        env = {"REQUEST_METHOD": method, "PATH_INFO": path, "CONTENT_LENGTH": str(len(body)), "wsgi.input": io.BytesIO(body),
+               "HTTP_AUTHORIZATION": "Basic " + base64.b64encode(f"any:{password}".encode()).decode()}
+        out = b"".join(app(env, lambda status, headers: seen.update(status=status)))
+        return seen["status"], out
+
+    assert call("/", password="nope")[0].startswith("401")
+    status, page = call("/")
+    assert status.startswith("200") and b"house/compare.html" in page
+    assert call("/house/viewer.html")[0].startswith("200")
+    assert call("/house/plan.json")[0].startswith("404") and call("/../house/review.html")[0].startswith("404")
+    answer = {"file": "house.dxf", "remarks": "doors look fine",
+              "verdicts": {"w1 | Single line": {"verdict": "unsure", "comment": "check thickness"}}}
+    assert call("/feedback", "POST", json.dumps(answer).encode())[0].startswith("200")
+    summary = cli.feedback_summary([str(tmp_path / "plans" / "feedback.jsonl")])
+    assert "not sure 1" in summary and "doors look fine" in summary and "check thickness" in summary
+    assert pack([tmp_path / "plans" / "house"], tmp_path / "site.zip") == ["house"]
+    import zipfile
+    names = zipfile.ZipFile(tmp_path / "site.zip").namelist()
+    assert "site/share.py" in names and "site/plans/house/compare.html" in names and not any("plan.json" in n for n in names)

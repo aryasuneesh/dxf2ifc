@@ -1,12 +1,14 @@
 """A 3D page for the browser: the IFC's geometry coloured by confidence, click an element to see its trust data.
 
 The IFC is turned into triangles here, in Python, so the page needs no IFC parser: one HTML file with
-three.js from a CDN. Every element keeps its IFC GlobalId, the stable id a portal can attach remarks to.
+three.js inlined (dxf2ifc/vendor, MIT), so it works offline and from a plain file. Every element keeps its IFC GlobalId, the stable id a portal can attach remarks to.
 """
 
 import html
 import json
 import multiprocessing
+import re
+from functools import cache
 from pathlib import Path
 
 import ifcopenshell
@@ -52,13 +54,32 @@ def elements(ifc_path) -> list[dict]:
     return result
 
 
+VENDOR = Path(__file__).parent / "vendor"
+
+
+@cache
+def three_bundle() -> str:
+    """three.js and OrbitControls as one inline script: each module wrapped in a function, exports returned.
+    ponytail: regex on the two pinned files (three 0.160.0); re-check the asserts when upgrading three."""
+    core = (VENDOR / "three.module.min.js").read_text(encoding="utf-8")
+    start = core.rindex("export{")
+    names = ",".join(f"{b}:{a}" for a, b in re.findall(r"([\w$]+) as ([\w$]+)", core[start:]))
+    orbit = (VENDOR / "OrbitControls.js").read_text(encoding="utf-8")
+    imports = re.match(r"\s*import\s*\{([^}]*)\}\s*from\s*'three';", orbit)
+    assert names and imports and "export { OrbitControls };" in orbit and "</script" not in core + orbit
+    orbit = orbit[imports.end():].replace("export { OrbitControls };", "")
+    return (f"const THREE=(()=>{{{core[:start]}\nreturn {{{names}}};}})();\n"
+            f"const {{OrbitControls}}=(()=>{{const {{{imports.group(1)}}}=THREE;\n{orbit}\nreturn {{OrbitControls}};}})();")
+
+
 def write_viewer(ifc_path, out_path, title=None) -> int:
     """Write the page next to the IFC. Returns the number of elements shown."""
     items = elements(ifc_path)
     colours = {name: "#%02x%02x%02x" % tuple(round(c * 255) for c in rgb) for name, rgb in config.CONFIDENCE_COLOURS.items()}
     page = (PAGE.replace("__TITLE__", html.escape(title or Path(ifc_path).stem))
             .replace("__COLOURS__", json.dumps(colours))
-            .replace("__DATA__", json.dumps(items, separators=(",", ":")).replace("</", "<\\/")))
+            .replace("__DATA__", json.dumps(items, separators=(",", ":")).replace("</", "<\\/"))
+            .replace("__THREE__", three_bundle()))
     Path(out_path).write_text(page, encoding="utf-8")
     return len(items)
 
@@ -82,29 +103,43 @@ Click "show in 3D" next to an item to see it on the right.</header>
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__ 3D</title>
 <style>
-html,body{margin:0;height:100%;font:14px/1.45 Segoe UI,Arial,sans-serif;background:#f4f5f7;color:#1c1c1c}
-#view{position:fixed;inset:0}
-.panel{position:fixed;background:#fff;border:1px solid #d6d8dc;border-radius:8px;padding:10px 12px;box-shadow:0 2px 8px #0001}
-#tools{top:12px;left:12px;max-width:260px}
-#info{top:12px;right:12px;width:300px;max-height:80vh;overflow:auto}
-h1{font-size:15px;margin:0 0 6px} label{display:block;cursor:pointer}
-.sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
-.badge{display:inline-block;background:#b3261e;color:#fff;border-radius:3px;padding:0 5px;font-size:11px;font-weight:600}
-table{border-collapse:collapse;width:100%} td{padding:2px 4px;border-bottom:1px solid #eee;vertical-align:top}
-td:first-child{color:#666;white-space:nowrap} code{font-size:12px;word-break:break-all}
-@media (max-width:640px){#info{top:auto;bottom:12px;left:12px;right:12px;width:auto;max-height:40vh}}
+:root{color-scheme:light}
+html,body{margin:0;height:100%;font:15px/1.5 Segoe UI,Arial,sans-serif;background:#f4f5f7;color:#1c1c1c}
+#view{position:fixed;inset:0} #view canvas{display:block}
+.panel{position:fixed;background:#fff;border:1px solid #c9ccd1;border-radius:8px;padding:12px 14px;box-shadow:0 2px 8px #0002}
+#tools{top:12px;left:12px;width:270px;max-height:calc(100vh - 24px);overflow:auto}
+#info{top:12px;right:12px;width:320px;max-height:70vh;overflow:auto}
+h1{font-size:16px;margin:0 0 6px;word-break:break-word} h2{font-size:14px;margin:12px 0 4px;color:#444}
+label{display:block;cursor:pointer;padding:2px 0}
+.sw{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:7px;vertical-align:-2px;border:1px solid #0003}
+.badge{display:inline-block;background:#b3261e;color:#fff;border-radius:3px;padding:1px 6px;font-size:12px;font-weight:600}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+button{font:inherit;padding:4px 10px;border:1px solid #8a8f98;border-radius:5px;background:#fff;color:#1c1c1c;cursor:pointer}
+button:hover{background:#eef2f8}
+:focus-visible{outline:3px solid #1d5fbf;outline-offset:2px}
+table{border-collapse:collapse;width:100%} td{padding:3px 4px;border-bottom:1px solid #e3e3e3;vertical-align:top}
+td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:13px;word-break:break-all}
+.hint{color:#555;font-size:13px;margin-top:8px}
+@media (max-width:700px){#tools{width:auto;right:12px;max-height:45vh} #info{top:auto;bottom:12px;left:12px;right:12px;width:auto;max-height:35vh}}
 </style>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-"three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script></head><body>
-<div id="view"></div>
-<div id="tools" class="panel"><h1>__TITLE__</h1><span class="badge">TO BE VERIFIED</span>
-<div id="legend" style="margin:8px 0"></div><div id="layers"></div>
-<label style="margin-top:6px"><input type="checkbox" id="sensors"> simulated room sensors</label>
-<div style="margin-top:6px;color:#666">Drag to turn, scroll to zoom, right-drag to pan. Click an element.</div></div>
-<div id="info" class="panel">Click an element to see where it came from and how sure the tool is.</div>
-<script type="module">
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+</head><body>
+<div id="view" role="img" aria-label="3D model of __TITLE__. Use the buttons in the panel to move the view and step through elements."></div>
+<div id="tools" class="panel" role="region" aria-label="View controls"><h1>__TITLE__</h1><span class="badge">TO BE VERIFIED</span>
+<h2>Colours</h2><div id="legend"></div>
+<h2>Show</h2><div id="layers"></div>
+<label><input type="checkbox" id="sensors"> simulated room sensors</label>
+<h2>View</h2>
+<div class="row"><button id="fit" title="Show the whole model (key R)">Whole model</button>
+<button id="zin" title="Zoom in (key +)">Zoom in</button><button id="zout" title="Zoom out (key -)">Zoom out</button></div>
+<h2>Step through</h2>
+<div class="row"><button id="prev">Previous</button><button id="next">Next</button>
+<select id="filter" aria-label="Which elements to step through"><option value="low">low confidence</option>
+<option value="medium">medium</option><option value="all">all</option></select></div>
+<div class="hint">Mouse: drag to turn, scroll to zoom, right-drag to pan, click an element.
+Keyboard: arrow keys pan, + and - zoom, R shows the whole model, N and P step through elements.</div></div>
+<div id="info" class="panel" role="region" aria-label="Selected element" aria-live="polite">Click an element, or use Next, to see where it came from and how sure the tool is.</div>
+<script>__THREE__</script>
+<script>
 const DATA = __DATA__, COLOURS = __COLOURS__;
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf4f5f7);
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000);
@@ -182,6 +217,32 @@ function select(id) {
   const b = new THREE.Box3().setFromObject(mesh), c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length(), 4);
   controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r, -r * 1.4, r * 1.2)); controls.update(); return true;
 }
+// Buttons and keys do everything the mouse does, so the page works without a mouse.
+const home = camera.position.clone();
+const fit = () => { controls.target.copy(centre); camera.position.copy(home); controls.update(); };
+const zoom = f => { camera.position.sub(controls.target).multiplyScalar(f).add(controls.target); controls.update(); };
+let step = -1;
+const stepThrough = dir => {
+  const want = document.getElementById("filter").value;
+  const list = meshes.filter(m => want === "all" || m.userData.level === want)
+    .sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1));
+  if (!list.length) { document.getElementById("info").textContent = `No ${want} confidence elements.`; return; }
+  step = (step + dir + list.length) % list.length; select(list[step].userData.id);
+  document.getElementById("info").insertAdjacentHTML("afterbegin", `<p><b>${step + 1} of ${list.length}</b> ${want === "all" ? "" : want + " confidence"}</p>`);
+};
+document.getElementById("fit").onclick = fit;
+document.getElementById("zin").onclick = () => zoom(0.8);
+document.getElementById("zout").onclick = () => zoom(1.25);
+document.getElementById("next").onclick = () => stepThrough(1);
+document.getElementById("prev").onclick = () => stepThrough(-1);
+document.getElementById("filter").onchange = () => { step = -1; };
+controls.listenToKeyEvents(window);
+addEventListener("keydown", e => {
+  if (e.target.closest("input,select,textarea")) return;
+  const act = {"+": () => zoom(0.8), "=": () => zoom(0.8), "-": () => zoom(1.25), r: fit, R: fit,
+               n: () => stepThrough(1), N: () => stepThrough(1), p: () => stepThrough(-1), P: () => stepThrough(-1)}[e.key];
+  if (act) { act(); e.preventDefault(); }
+});
 window.viewer = { select, meshes };
 const fromHash = () => location.hash.length > 1 && select(decodeURIComponent(location.hash.slice(1)));
 addEventListener("hashchange", fromHash); fromHash();

@@ -33,6 +33,8 @@ This writes six files into `out\plan`:
 | `plan.json` | The same content as plain data. |
 | `roles.json` | What each drawing layer was taken to mean. |
 
+To open the IFC in Bonsai Viewer: **Add Model › Add IFC File** ("Open Project" is for Bonsai's own project files, not IFC).
+
 Useful options: `--elevation 7.48` and `--height 3.13` (storey level and height in metres), `--project NAME` (keeps element ids the same across revisions of a file), `--bbox xmin,ymin,xmax,ymax` (use one part of a sheet).
 
 ## Try it in a browser

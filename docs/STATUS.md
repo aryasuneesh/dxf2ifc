@@ -87,7 +87,7 @@ Status: **done**, **partly** (works, with a known limit), **open** (not started)
 1. **User tests** with engineers and an outsider, then one round of changes from what they say. Needs the team.
 2. **Pitch**: slides after the pitch workshop next week; fill the numbers into `PITCH.md`.
 3. **Reference IFC**: no matching DXF; not expected. The printed-area check stands in for it.
-4. **IFC files** not yet opened in Bonsai or Revit by a person.
+4. **IFC files** load in Bonsai Viewer 0.9.0 (IFC4 and IFC2X3, 21 Nov); a person still has to check them element by element, and Revit is untested.
 5. **Deployment story** for Azure / Databricks (container + API) is not written.
 6. **The 3D view loads three.js from a CDN**: the demo laptop needs internet, or a cached copy.
 

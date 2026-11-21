@@ -7,11 +7,13 @@ html,body{margin:0;height:100%;font:15px/1.5 Segoe UI,Arial,sans-serif;backgroun
 .panel{position:fixed;background:#fff;border:1px solid #c9ccd1;border-radius:8px;padding:10px 14px;box-shadow:0 2px 10px #0002;box-sizing:border-box}
 #tools{top:12px;left:12px;width:290px;max-height:calc(55vh - 18px);overflow:auto}
 #mine{bottom:12px;left:12px;width:290px;max-height:calc(45vh - 18px);overflow:auto}
-#planbox{top:12px;right:12px;width:380px;max-height:calc(60vh - 18px);overflow:auto}
+#tools{max-height:calc(100vh - 110px)}
+#planbox{top:12px;right:12px;width:380px;max-height:calc(48vh - 18px);overflow:auto}
 #planbox.big{width:min(900px,calc(100vw - 330px));max-height:calc(100vh - 24px)}
 #planbox img{width:100%;display:block;border:1px solid #ddd;margin-top:6px;cursor:zoom-in}
 #planbox.big img{cursor:zoom-out}
-#info{bottom:12px;right:12px;width:380px;max-height:calc(40vh - 18px);overflow:auto}
+#info{bottom:12px;right:12px;width:380px;max-height:calc(52vh - 18px);overflow:auto;padding-top:0}
+#info .nav{position:sticky;top:0;background:#fff;padding:10px 0 8px;margin:0 0 6px;border-bottom:1px solid #e3e3e3;z-index:1}
 h1{font-size:16px;margin:0 0 4px;word-break:break-word} h2{font-size:14px;margin:12px 0 4px;color:#333}
 summary{cursor:pointer;font-weight:600;font-size:14px} details>summary{margin:2px 0}
 label{display:block;cursor:pointer;padding:2px 0}
@@ -37,10 +39,6 @@ td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:
 
 <div id="tools" class="panel" role="region" aria-label="View controls">
 <h1>__TITLE__</h1><span class="badge">TO BE VERIFIED</span>
-<h2>Go through elements</h2>
-<div class="row"><button id="prev" title="key P">Previous</button><button id="next" class="primary" title="key N">Next</button>
-<select id="filter" aria-label="Which elements to go through"><option value="check">to check</option>
-<option value="low">low confidence</option><option value="medium">medium confidence</option><option value="all">all</option></select></div>
 <h2>View</h2>
 <div class="row"><button id="fit" title="Show the whole model (key R)">Whole model</button>
 <button id="zin" title="Zoom in (key +)">Zoom in</button><button id="zout" title="Zoom out (key -)">Zoom out</button></div>
@@ -56,9 +54,6 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 </div>
 
 <div id="mine" class="panel" role="region" aria-label="Your feedback">
-<h2 style="margin-top:0">Your feedback</h2>
-<div id="status" role="status"></div>
-<div class="row"><button id="choose" hidden>Choose feedback file</button><button id="download">Download feedback</button></div>
 <details id="overall"><summary>Overall questions (2 minutes, at the end)</summary>
 <form id="form">
 <label>Your name or initials (optional)<input type="text" name="name" autocomplete="name"></label>
@@ -76,11 +71,17 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 <details id="planbox" class="panel" open><summary>2D plan</summary>__PLAN__
 <div class="hint">Colours on the plan are the same confidence colours. Click the plan to make it larger.</div></details>
 
-<div id="info" class="panel" role="region" aria-label="Selected element" aria-live="polite">
-<b>How to give feedback</b><ol style="margin:4px 0;padding-left:20px">
+<div id="info" class="panel" role="region" aria-label="Review elements">
+<div class="row nav"><button id="prev" title="key P">Previous</button><button id="next" class="primary" title="key N">Next</button>
+<select id="filter" aria-label="Which elements to go through"><option value="check">to check</option>
+<option value="low">low confidence</option><option value="medium">medium confidence</option><option value="all">all</option></select></div>
+<div id="el" aria-live="polite"><b>How to give feedback</b><ol style="margin:4px 0;padding-left:20px">
 <li>Press <b>Next</b> (or click any element) to go to something the program is unsure about.</li>
 <li>Say if it is right: <b>Correct</b>, <b>Wrong</b> or <b>Not sure</b>, and add a comment if you like.</li>
 <li>Answers are saved as you go. At the end, open <b>Overall questions</b> on the left.</li></ol></div>
+<div id="status" role="status"></div>
+<div class="row"><button id="choose" hidden>Choose feedback file</button><button id="download">Download feedback</button></div>
+</div>
 
 <script>__THREE__</script>
 <script>
@@ -231,7 +232,7 @@ function describe(mesh, counter = "") {
   const rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
     ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Source", d.source],
     ["Printed area", d.printed_area ? d.printed_area + " m2" : ""]];
-  $("info").innerHTML = (counter ? `<p style="margin:0 0 4px"><b>${counter}</b></p>` : "")
+  $("el").innerHTML = (counter ? `<p style="margin:0 0 4px"><b id="counter">${counter}</b></p>` : "")
     + `<h2 style="margin-top:0">${esc(label(d))}</h2>`
     + (NOTES[d.id] ? `<div class="why"><b>Why check:</b> ${esc(NOTES[d.id])}</div>` : "")
     + `<p style="margin:6px 0 2px"><b>Is this element right?</b></p>`
@@ -244,12 +245,13 @@ function describe(mesh, counter = "") {
     + `<tr><td>IFC GlobalId</td><td><code>${esc(d.id)}</code></td></tr><tbody id="sensorrows"></tbody></table></details>`;
   if (sensorsOn && d.kind === "rooms") sensorRows(mesh);
   const entry = () => saved.items[d.id] ||= {what: label(d), why: NOTES[d.id] || ""};
-  $("info").querySelectorAll(".verdict button").forEach(b => b.onclick = () => {
+  $("el").querySelectorAll(".verdict button").forEach(b => b.onclick = () => {
     if (canFile && !handle && !asked) chooseFile();  // first answer: ask once where to keep the file
     else regain();
     Object.assign(entry(), {verdict: b.dataset.v, seconds: Math.round((Date.now() - saved.started) / 1000)});
-    $("info").querySelectorAll(".verdict button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    $("el").querySelectorAll(".verdict button").forEach(x => x.setAttribute("aria-pressed", x === b));
     store(true);
+    if ($("counter")) $("counter").textContent = $("counter").textContent.replace(/\(\d+ answered\)/, () => `(${answeredIn(currentList())} answered)`);
   });
   $("comment").oninput = e => { entry().comment = e.target.value; store(); };
 }
@@ -267,14 +269,15 @@ function select(id, move = true, counter = "") {
 const fit = () => { controls.target.copy(centre); camera.position.copy(home); controls.update(); };
 const zoom = f => { camera.position.sub(controls.target).multiplyScalar(f).add(controls.target); controls.update(); };
 let step = -1;
+const currentList = () => { const want = $("filter").value;
+  return meshes.filter(m => want === "all" || (want === "check" ? NOTES[m.userData.id] : m.userData.level === want))
+    .sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1)); };
+const answeredIn = list => list.filter(m => (saved.items[m.userData.id] || {}).verdict).length;
 function stepThrough(dir) {
-  const want = $("filter").value;
-  const list = meshes.filter(m => want === "all" || (want === "check" ? NOTES[m.userData.id] : m.userData.level === want))
-    .sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1));
-  if (!list.length) { $("info").textContent = "Nothing in this list."; return; }
+  const list = currentList();
+  if (!list.length) { $("el").textContent = "Nothing in this list."; return; }
   step = (step + dir + list.length) % list.length;
-  const done = list.filter(m => (saved.items[m.userData.id] || {}).verdict).length;
-  select(list[step].userData.id, true, `${step + 1} of ${list.length} (${done} answered)`);
+  select(list[step].userData.id, true, `${step + 1} of ${list.length} (${answeredIn(list)} answered)`);
 }
 $("fit").onclick = fit; $("zin").onclick = () => zoom(0.8); $("zout").onclick = () => zoom(1.25);
 $("next").onclick = () => stepThrough(1); $("prev").onclick = () => stepThrough(-1);

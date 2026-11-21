@@ -28,6 +28,8 @@ def test_tc40_run_writes_four_files(tmp_path, capsys):
     assert lines[4].endswith("LLM calls: 0") and lines[5].endswith("review.html")
     plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
     assert plan["stats"]["runtime_s"] > 0
+    compare = (tmp_path / "out" / "compare.html").read_text(encoding="utf-8")
+    assert 'src="review.html"' in compare and 'name="viewer"' in compare
 
 
 def test_run_as_a_module(tmp_path):

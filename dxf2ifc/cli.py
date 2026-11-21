@@ -16,14 +16,14 @@ from .schema import level
 
 
 def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=None) -> tuple[dict, list[dict]]:
-    """DXF -> plan.json, roles.json, model.ifc, model_ifc2x3.ifc, review.html, viewer.html in out_dir. Returns the plan and the checks."""
+    """DXF -> plan.json, roles.json, model.ifc, model_ifc2x3.ifc, review.html, viewer.html, compare.html in out_dir. Returns the plan and the checks."""
     from .extract import extract
     from .normalize import load
     from .qa import check
     from .review import write_review
     from .roles import assign_roles
     from .to_ifc import write_all
-    from .viewer import write_viewer
+    from .viewer import write_compare, write_viewer
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -38,6 +38,7 @@ def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=N
     checks = check([plan], out_dir / "model.ifc", runtime_s=plan["stats"]["runtime_s"], errors=errors)
     write_review(plan, checks, out_dir / "review.html", drawing=drawing, ifc_path=out_dir / "model.ifc")
     write_viewer(out_dir / "model.ifc", out_dir / "viewer.html", title=plan["source"]["file"])
+    write_compare(out_dir / "compare.html", plan["source"]["file"])
     (out_dir / "plan.json").write_text(json.dumps(plan, indent=1, ensure_ascii=False), encoding="utf-8")
     (out_dir / "roles.json").write_text(json.dumps(roles, indent=1, ensure_ascii=False), encoding="utf-8")
     return plan, checks
@@ -58,6 +59,7 @@ def summary(plan, checks, out_dir) -> str:
         f"To review: {sum(f['severity'] == 'review' for f in plan['flags'])} items",
         f"Time: {stats['runtime_s']} s | LLM calls: {stats['llm_calls']}",
         f"Open: {Path(out_dir) / 'review.html'}",
+        f"Plan and 3D side by side (served): {Path(out_dir) / 'compare.html'}",
     ]
     return "\n".join(lines)
 
@@ -107,12 +109,14 @@ document.getElementById("go").onclick = async () => {
   const links = document.getElementById("links");
   links.hidden = !reply.ok;
   if (reply.ok) links.innerHTML = `<a href="/out/${data.id}/review.html" target="_blank">Open the review page</a> &middot; ` +
+    `<a href="/out/${data.id}/compare.html" target="_blank">Plan and 3D side by side</a> &middot; ` +
     `<a href="/out/${data.id}/viewer.html" target="_blank">3D view</a> &middot; ` +
     `<a href="/out/${data.id}/model.ifc" download>IFC4</a> &middot; <a href="/out/${data.id}/model_ifc2x3.ifc" download>IFC2X3</a> &middot; <a href="/out/${data.id}/plan.json" download>plan.json</a>`;
 };
 </script></body></html>"""
 SERVED = {"review.html": "text/html; charset=utf-8", "model.ifc": "application/octet-stream",
           "model_ifc2x3.ifc": "application/octet-stream", "viewer.html": "text/html; charset=utf-8",
+          "compare.html": "text/html; charset=utf-8",
           "plan.json": "application/json", "roles.json": "application/json"}
 
 

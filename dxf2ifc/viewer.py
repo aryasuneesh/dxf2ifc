@@ -63,6 +63,22 @@ def write_viewer(ifc_path, out_path, title=None) -> int:
     return len(items)
 
 
+def write_compare(out_path, title) -> None:
+    """Review page (the plan) and 3D view side by side. "show in 3D" links in the left pane target the right pane
+    by its name; browsers allow that when the pages are served (python -m dxf2ifc serve, or any local server)."""
+    Path(out_path).write_text(COMPARE.replace("__TITLE__", html.escape(title)), encoding="utf-8")
+
+
+COMPARE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>__TITLE__: plan and 3D</title>
+<style>html,body{margin:0;height:100%;background:#fff;color:#1c1c1c;font:14px Segoe UI,Arial,sans-serif}
+body{display:flex;flex-direction:column} header{padding:6px 12px;border-bottom:1px solid #ddd}
+main{flex:1;display:flex;min-height:0} iframe{flex:1;border:0;min-width:0} iframe+iframe{border-left:2px solid #ccc}</style>
+</head><body><header><b>__TITLE__</b>: the plan and what to check on the left, the model on the right.
+Click "show in 3D" next to an item to see it on the right.</header>
+<main><iframe src="review.html" title="Plan and review list"></iframe>
+<iframe src="viewer.html" name="viewer" title="3D model"></iframe></main></body></html>"""
+
+
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>__TITLE__ 3D</title>
 <style>

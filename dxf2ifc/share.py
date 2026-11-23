@@ -26,36 +26,85 @@ def plans(root) -> list[str]:
     return sorted(p.name for p in Path(root).iterdir() if (p / "review.html").is_file())
 
 
-def index_page(names, offline=False) -> bytes:
-    """Start page. Online: each plan opens side by side. Offline (zip sent by email): review page and 3D in two tabs."""
+STYLE = """<style>:root{color-scheme:light} body{font:17px/1.6 Segoe UI,Arial,sans-serif;color:#1c1c1c;background:#fff;
+max-width:780px;margin:40px auto;padding:0 20px} a{color:#1d5fbf} li{margin:8px 0} span{color:#555;font-size:15px}
+h2{margin-top:28px} .box{background:#eef4fc;border-left:5px solid #1d5fbf;padding:10px 16px}
+table{border-collapse:collapse;width:100%} td{border-bottom:1px solid #ddd;padding:6px 8px;vertical-align:top}
+td:first-child{white-space:nowrap;font-weight:600}</style>"""
+
+
+def offline_page(names) -> bytes:
+    """START HERE page of the zip sent by email: what to do, and every answer we need from the engineer."""
     e = html.escape
-    rows = "".join(f"<li><a href='{e(n)}/viewer.html'>{e(n)}</a> <span>(<a href='{e(n)}/review.html'>full report</a>)</span></li>"
-                   if offline else
-                   f"<li><a href='{e(n)}/compare.html'>{e(n)}</a> <span>(<a href='{e(n)}/review.html'>review page only</a> · "
+    plans = "".join(f"<li><a href='{e(n)}/viewer.html'><b>{e(n)}</b></a></li>" for n in names) or "<li>No plans yet.</li>"
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>DXF to IFC: user test</title>{STYLE}</head><body>
+<h1>From a 2D plan to a model you can check</h1>
+<p>A program turned each floor plan below (a DXF drawing) into a 3D building model (IFC). Where the drawing did not say
+enough, the program made a guess. We would like you, as an engineer, to tell us whether those guesses are right.</p>
+<p><b>Time:</b> about 10 minutes per plan, {len(names)} plan{"s" if len(names) != 1 else ""}.</p>
+
+<div class="box"><b>Before you start</b><ol>
+<li><b>Unzip the whole folder</b> (right-click the zip, Extract all). Files opened from inside the zip do not work.</li>
+<li>Open the plans in <b>Chrome or Edge</b>. Other browsers work too, but cannot save your answers to a file by themselves.</li>
+<li>No internet needed. Nothing is sent anywhere: your answers stay on your computer until you email them.</li></ol></div>
+
+<h2>Plans</h2><ol>{plans}</ol>
+
+<h2>What you will see</h2><ul>
+<li>The 3D model in the middle. Drag to turn it, scroll to zoom, right-drag to move.</li>
+<li>The original 2D plan in the top right corner. Click it to make it larger; the triangle folds it away.</li>
+<li>Colours are added by the program, not taken from the drawing: <b>green</b> it is probably right, <b>orange</b> worth a look,
+<b>red</b> check this. A switch on the left colours the model by element type instead.</li>
+<li>The questions in the bottom right corner. The elements a question is about <b>blink yellow</b>. A gap in a wall
+with no door is shown as a see-through orange box.</li></ul>
+
+<h2>What we need from you</h2>
+<table>
+<tr><td>1. The questions<br><span>about 8 per plan</span></td><td>Press <b>Next</b>. Each question covers all elements
+with the same doubt, for example "37 walls drawn as a single line". Answer <b>Correct</b>, <b>Wrong</b> or <b>Not sure</b>.
+The next question follows by itself.<br>If you answer Wrong, please type in the comment box what is wrong and what it should be;
+the page then waits for you.<br>If one element of a group is different from the rest, click it in the model and answer for that
+one alone.</td></tr>
+<tr><td>2. Not in the model</td><td>The last question lists things the program found on the drawing but could not place,
+such as a door tag with no door. Tell us if it is acceptable to add these by hand.</td></tr>
+<tr><td>3. Overall questions<br><span>2 minutes</span></td><td>After the last question they open on the left:
+your role, how useful this is compared with redrawing the plan by hand (1 to 5), what you would not trust, what we should
+change first, and any other remarks. Your name is optional.</td></tr>
+<tr><td>4. Send the files</td><td>Email the feedback files (one per plan, named <b>feedback-&lt;plan&gt;.json</b>) to the
+person who sent you this folder.</td></tr></table>
+
+<h2>Where your answers are saved</h2><ul>
+<li><b>Chrome and Edge:</b> on your first answer the browser asks where to save the feedback file. Choose a folder you will
+find again, such as Desktop. Every answer is written to that file at once; the bottom right panel shows the file name and the time
+of the last save.</li>
+<li><b>Other browsers:</b> answers are kept in the browser. Press <b>Download feedback</b> at the end; the file goes to your
+Downloads folder.</li>
+<li>You can close a plan and come back later: your answers are still there. If the browser asks again to allow saving, click
+Allow.</li></ul>
+
+<p><span>Each plan folder also holds <b>model.ifc</b>, the model itself, if you want to open it in your own BIM software.</span></p>
+</body></html>""".encode("utf-8")
+
+
+def index_page(names, offline=False) -> bytes:
+    """Start page of the website: each plan opens side by side. offline=True gives the emailed zip's page instead."""
+    if offline:
+        return offline_page(names)
+    e = html.escape
+    rows = "".join(f"<li><a href='{e(n)}/compare.html'>{e(n)}</a> <span>(<a href='{e(n)}/review.html'>review page only</a> · "
                    f"<a href='{e(n)}/viewer.html'>3D only</a>)</span></li>" for n in names)
-    steps = ("<li>Unzip the whole folder first (opening files inside the zip does not work), then open a plan below "
-             "in Chrome or Edge. It opens as a 3D model with the 2D plan in the top right corner.</li>"
-             "<li>Press <b>Next</b> to go through a few questions. Each covers all elements with the same doubt; "
-             "they blink in the model. Say if they are Correct, Wrong or Not sure, and add a comment if you like. The first time, the browser asks where to save your feedback file: "
-             "pick a folder you will find again. Every answer is written to that file straight away.</li>"
-             "<li>At the end, open <b>Overall questions</b> on the left and answer them. Then email the feedback file "
-             "(one per plan) to the person who sent you this folder. In other browsers, press <b>Download feedback</b> to get the file.</li>"
-             if offline else
-             "<li>Open a plan. The drawing and a list of things to check are on the left, the 3D model on the right.</li>"
+    steps = ("<li>Open a plan. The drawing and a list of things to check are on the left, the 3D model on the right.</li>"
              "<li>For each item in \"To review\", press Correct, Wrong or Not sure, and add a comment if you like.</li>"
              "<li>At the bottom of the left side, answer four short questions and press Send feedback.</li>")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>DXF to IFC: user test</title>
-<style>:root{{color-scheme:light}} body{{font:17px/1.6 Segoe UI,Arial,sans-serif;color:#1c1c1c;background:#fff;
-max-width:760px;margin:40px auto;padding:0 20px}} a{{color:#1d5fbf}} li{{margin:10px 0}} span{{color:#555;font-size:15px}}
-.box{{background:#eef4fc;border-left:5px solid #1d5fbf;padding:10px 16px}}</style></head><body>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>DXF to IFC: user test</title>{STYLE}</head><body>
 <h1>From a 2D plan to a model you can check</h1>
 <p>A program turned each drawing below into a 3D building model (IFC). We would like your opinion as an engineer.</p>
 <div class="box"><b>What to do (about 10 minutes per plan)</b><ol>
 {steps}</ol></div>
 <h2>Plans</h2><ul>{rows or "<li>No plans yet.</li>"}</ul>
-<p><span>{"Nothing on these pages is sent anywhere; works without internet." if offline else
-'On a small screen, use "review page only"; its "show in 3D" links open the model in a new tab.'}</span></p>
+<p><span>On a small screen, use "review page only"; its "show in 3D" links open the model in a new tab.</span></p>
 </body></html>""".encode("utf-8")
 
 
@@ -111,9 +160,9 @@ def pack(plan_dirs, zip_path, offline=False) -> list[str]:
     Default: for hosting, with this file as the website. offline=True: to email, with a start page instead."""
     folders = [Path(f) for f in plan_dirs]
     for folder in folders:
-        if not (folder / "review.html").is_file():
-            raise ValueError(f"{folder} has no review.html; run the plan first")
-    top, files = ("dxf2ifc user test", ("review.html", "viewer.html", "model.ifc")) if offline else ("site/plans", FILES)
+        if not (folder / "viewer.html").is_file():
+            raise ValueError(f"{folder} has no viewer.html; run the plan first")
+    top, files = ("dxf2ifc user test", ("viewer.html", "model.ifc")) if offline else ("site/plans", FILES)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         if offline:
             archive.writestr(f"{top}/START HERE.html", index_page([f.name for f in folders], offline=True))

@@ -21,7 +21,8 @@ from . import config
 KINDS = {"IfcWall": "walls", "IfcWallStandardCase": "walls", "IfcDoor": "openings", "IfcWindow": "openings",
          "IfcSpace": "rooms", "IfcSlab": "slabs", "IfcRoof": "slabs", "IfcStair": "stairs",
          "IfcSensor": "extras", "IfcDistributionControlElement": "extras", "IfcFireSuppressionTerminal": "extras",
-         "IfcAlarm": "extras", "IfcFlowTerminal": "extras", "IfcBuildingElementProxy": "fire safety"}
+         "IfcAlarm": "extras", "IfcFlowTerminal": "extras", "IfcBuildingElementProxy": "fire safety",
+         "IfcOpeningElement": "gaps"}  # a gap in a wall with no door: drawn as a see-through box
 
 
 def elements(ifc_path) -> list[dict]:
@@ -36,7 +37,7 @@ def elements(ifc_path) -> list[dict]:
     while True:
         shape = iterator.get()
         product = model.by_guid(shape.guid)
-        if product.is_a("IfcOpeningElement"):  # the void cut in a wall, not something to show
+        if product.is_a("IfcOpeningElement") and product.HasFillings:  # a door or window fills it: show that instead
             if not iterator.next():
                 break
             continue

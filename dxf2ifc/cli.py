@@ -189,11 +189,13 @@ def feedback_summary(paths) -> str:
         rows += [json.loads(line) for line in text.splitlines() if line.strip()] if path.endswith(".jsonl") else [json.loads(text)]
     if not rows:
         return "no feedback yet"
-    verdicts = [v.get("verdict") for row in rows for v in row.get("verdicts", {}).values() if v.get("verdict")]
+    answered = [v for row in rows for v in row.get("verdicts", {}).values() if v.get("verdict")]
+    verdicts = [v["verdict"] for v in answered]
+    covered = sum(len(v.get("ids") or [0]) for v in answered)  # one answer can cover a group of similar elements
     useful = [int(row["useful"]) for row in rows if str(row.get("useful", "")).isdigit()]
     lines = [f"Testers: {len(rows)} ({', '.join(f'{n} {role}' for role, n in Counter(r.get('role', '?') for r in rows).most_common())})",
              f"Usefulness: mean {sum(useful) / len(useful):.1f} of 5" if useful else "Usefulness: no answers",
-             f"Items judged: {len(verdicts)}, wrong {verdicts.count('wrong')}, correct {verdicts.count('ok')}, "
+             f"Items judged: {len(verdicts)} (covering {covered} elements), wrong {verdicts.count('wrong')}, correct {verdicts.count('ok')}, "
              f"not sure {verdicts.count('unsure')}",
              f"Minutes on page: median {sorted(r.get('minutes_on_page', 0) for r in rows)[len(rows) // 2]}"]
     for key, title in (("distrust", "Would not trust"), ("change", "Change first"), ("remarks", "Other remarks")):

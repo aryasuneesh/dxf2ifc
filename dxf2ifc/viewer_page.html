@@ -64,7 +64,6 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 <label>What should change first?<textarea name="change" rows="2"></textarea></label>
 <label>Any other remarks or comments<textarea name="remarks" rows="3"></textarea></label>
 </form>
-<div id="general"></div>
 </details>
 </div>
 
@@ -76,9 +75,9 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 <select id="filter" aria-label="Which elements to go through"><option value="check">questions</option>
 <option value="low">low confidence</option><option value="medium">medium confidence</option><option value="all">all elements</option></select></div>
 <div id="el" aria-live="polite"><b>How to give feedback</b><ol style="margin:4px 0;padding-left:20px">
-<li>Press <b>Next</b> for the first question. Similar elements are asked about together and blink in the model.</li>
-<li>Say if it is right: <b>Correct</b>, <b>Wrong</b> or <b>Not sure</b>, and add a comment if you like.</li>
-<li>Answers are saved as you go. At the end, open <b>Overall questions</b> on the left.</li></ol></div>
+<li>Press <b>Next</b> for the first question. Each question covers all similar elements; they blink in the model.</li>
+<li>Answer <b>Correct</b>, <b>Wrong</b> or <b>Not sure</b>. The next question follows by itself, unless you type a comment.</li>
+<li>Answers are saved as you go. After the last question, answer the <b>Overall questions</b> on the left.</li></ol></div>
 <div id="status" role="status"></div>
 <div class="row"><button id="choose" hidden>Choose feedback file</button><button id="download">Download feedback</button></div>
 </div>
@@ -86,7 +85,7 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 <script>__THREE__</script>
 <script>
 const DATA = __DATA__, SETUP = __SETUP__, COLOURS = SETUP.colours, NOTES = SETUP.notes, $ = id => document.getElementById(id);
-const TYPE_COLOURS = {walls: "#cfc8bd", openings: "#8d6e63", rooms: "#9cc9f0", slabs: "#b9bcc2", stairs: "#a1887f", "fire safety": "#7e57c2"};
+const TYPE_COLOURS = {walls: "#cfc8bd", openings: "#8d6e63", rooms: "#9cc9f0", slabs: "#b9bcc2", stairs: "#a1887f", "fire safety": "#7e57c2", gaps: "#ff7043"};
 const WINDOW_COLOUR = "#5aa9e6", esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 // ---------------------------------------------------------------- scene
@@ -102,8 +101,8 @@ const groups = {}, meshes = [], box = new THREE.Box3();
 for (const item of DATA) {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(item.v, 3)); g.setIndex(item.f); g.computeVertexNormals();
-  const room = item.kind === "rooms";
-  const m = new THREE.MeshLambertMaterial({ transparent: room, opacity: room ? 0.35 : 1, depthWrite: !room, side: THREE.DoubleSide });
+  const see = item.kind === "rooms" || item.kind === "gaps";  // see-through: a room's volume, the empty box of a gap
+  const m = new THREE.MeshLambertMaterial({ transparent: see, opacity: see ? (item.kind === "gaps" ? 0.55 : 0.35) : 1, depthWrite: !see, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, m); mesh.userData = item; meshes.push(mesh);
   (groups[item.kind] ||= new THREE.Group()).add(mesh); box.expandByObject(mesh);
 }
@@ -206,8 +205,6 @@ $("download").onclick = () => {
 const form = $("form");
 for (const [name, value] of Object.entries(saved.form)) if (form.elements[name]) form.elements[name].value = value;
 form.oninput = () => { saved.form = Object.fromEntries(new FormData(form)); store(); };
-$("general").innerHTML = SETUP.general.length ? "<h2>About the whole drawing</h2><ul style='padding-left:18px;margin:4px 0'>"
-  + SETUP.general.map(g => `<li>${esc(g)}</li>`).join("") + "</ul>" : "";
 loadHandle().then(h => { handle = h; status(); if (h) writeFile(); });
 status();
 
@@ -222,12 +219,13 @@ renderer.domElement.addEventListener("pointerup", e => {
   const hit = ray.intersectObjects(shown).find(h => h.object.userData.kind !== "rooms") || ray.intersectObjects(shown)[0];
   if (hit) select(hit.object.userData.id, false);
 });
-const label = d => { const n = d.long_name || d.name, t = d.type.replace("Ifc", ""); return n.toLowerCase().startsWith(t.toLowerCase()) ? n : `${t} ${n}`.trim(); };
+const label = d => { const n = d.long_name || d.name, t = d.type.replace("Ifc", ""); if (d.type === "IfcOpeningElement") return `Gap ${n.replace(/^Opening\s*/, "")}`.trim(); return n.toLowerCase().startsWith(t.toLowerCase()) ? n : `${t} ${n}`.trim(); };
 function sensorRows(mesh) {
   const r = reading(mesh.userData.id), el = $("sensorrows"); if (!el) return;
   el.innerHTML = `<tr><td>Temperature</td><td>${r.temp.toFixed(1)} °C (simulated)</td></tr><tr><td>CO2</td><td>${Math.round(r.co2)} ppm (simulated)</td></tr>`;
 }
 // One answer card, for a single element or for a question that covers many.
+let advance = null;
 function card(o) {
   const mine = saved.items[o.key] || {};
   $("el").innerHTML = (o.counter ? `<p style="margin:0 0 4px"><b id="counter">${o.counter}</b></p>` : "")
@@ -235,7 +233,7 @@ function card(o) {
     + (o.why ? `<div class="why"><b>Why check:</b> ${o.why}</div>` : "")
     + `<p style="margin:6px 0 2px"><b>${o.question}</b></p>`
     + `<div class="row verdict" role="group" aria-label="Your verdict">`
-    + [["ok", "Correct"], ["wrong", "Wrong"], ["unsure", "Not sure"]].map(([v, t]) =>
+    + [["ok", "Correct"], ["wrong", "Wrong"], ["unsure", "Not sure"]].map(([v, t], i) => [v, (o.labels || [])[i] || t]).map(([v, t]) =>
         `<button type="button" data-v="${v}" aria-pressed="${mine.verdict === v}">${t}</button>`).join("") + `</div>`
     + `<label>Comment (optional)<textarea id="comment" rows="2">${esc(mine.comment || "")}</textarea></label>` + (o.extra || "");
   const entry = () => saved.items[o.key] ||= {what: o.title, why: o.whyText, ...(o.ids ? {ids: o.ids} : {})};
@@ -246,8 +244,11 @@ function card(o) {
     $("el").querySelectorAll(".verdict button").forEach(x => x.setAttribute("aria-pressed", x === b));
     store(true);
     if ($("counter")) $("counter").textContent = $("counter").textContent.replace(/\(\d+ answered\)/, () => `(${answeredIn(currentList())} answered)`);
+    // Questions move on by themselves; typing a comment (or clicking into it) stops that.
+    clearTimeout(advance); if (o.auto) advance = setTimeout(() => stepThrough(1), 900);
   });
-  $("comment").oninput = e => { entry().comment = e.target.value; store(); };
+  $("comment").oninput = e => { clearTimeout(advance); entry().comment = e.target.value; store(); };
+  $("comment").onfocus = () => clearTimeout(advance);
 }
 function describe(mesh, counter = "") {
   const d = mesh.userData, why = (NOTES[d.id] || []).join("; ");
@@ -272,6 +273,8 @@ const QUESTIONS = Object.values(Object.entries(NOTES).filter(([id]) => byId[id])
     const q = by[key] ||= {key: "q:" + key, ids: [], whys: []}, i = q.ids.indexOf(id);
     if (i < 0) { q.ids.push(id); q.whys.push(why); } else if (q.whys[i] !== why) q.whys[i] += "; " + why;
     return by; }, {}));
+// Things on the drawing that are not in the model at all (a door tag with no opening, a room that did not close).
+if (SETUP.general.length) QUESTIONS.push({key: "q:not in the model", ids: [], whys: SETUP.general});
 let lit = [];
 function light(ms) { lit.forEach(m => m.material.emissive.setHex(0)); lit = ms; }
 function frame(ms) {
@@ -279,12 +282,24 @@ function frame(ms) {
   const c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length(), 4);
   controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r * 0.6, -r * 0.85, r * 0.75)); controls.update();
 }
+const NOUNS = {IfcSpace: "room", IfcWallStandardCase: "wall", IfcOpeningElement: "gap", IfcBuildingElementProxy: "fire-safety symbol"};
+const ASSUMED = "Values assumed for the whole storey: ", bullets = items => "<ul style='margin:2px 0;padding-left:18px'>" + items.map(i => `<li>${esc(i)}</li>`).join("") + "</ul>";
 function ask(q, counter) {
   const ms = q.ids.map(id => byId[id]), n = ms.length, same = new Set(q.whys).size === 1;
+  if (!n) {  // nothing to show in 3D: a list
+    light([]); picked = null;
+    return card({key: q.key, title: "Not in the model", counter, auto: true, whyText: q.whys.join(" | "),
+      why: "found on the drawing, but the program could not place them:" + bullets(q.whys),
+      question: "Is it acceptable that these are left out, to be added by hand?", labels: ["Acceptable", "Not acceptable", "Not sure"]});
+  }
   ms.forEach(m => { m.parent.visible = true; }); picked = n === 1 ? ms[0] : null; light(ms); frame(ms);
-  const types = new Set(ms.map(m => ({IfcSpace: "room", IfcWallStandardCase: "wall"}[m.userData.type] || m.userData.type.replace("Ifc", "").toLowerCase())));
+  if (n === 1 && q.whys[0].startsWith(ASSUMED))
+    return card({key: q.key, title: "Assumed storey values", counter, auto: true, whyText: q.whys[0],
+      why: "these are not on the drawing, so the program assumed them:" + bullets(q.whys[0].slice(ASSUMED.length).split("; ")),
+      question: "Are these values acceptable?"});
+  const types = new Set(ms.map(m => NOUNS[m.userData.type] || m.userData.type.replace("Ifc", "").toLowerCase()));
   const title = n === 1 ? label(ms[0].userData) : `${n} ${types.size === 1 ? [...types][0] + "s" : "elements"}`;
-  card({key: q.key, title, counter, ids: q.ids, whyText: same ? q.whys[0] : q.key.slice(2).replaceAll("#", "…"),
+  card({key: q.key, title, counter, ids: q.ids, auto: true, whyText: same ? q.whys[0] : q.key.slice(2).replaceAll("#", "…"),
     question: n === 1 ? "Is this element right?" : "Are these right? One answer covers all of them.",
     why: same ? esc(q.whys[0]) : esc(q.key.slice(2).replaceAll("#", "…"))
       + `<details><summary style="font-weight:400">The numbers for each (${n})</summary><ul style='margin:2px 0;padding-left:18px'>`
@@ -307,9 +322,21 @@ const inCheck = () => $("filter").value === "check";
 const currentList = () => { const want = $("filter").value; return inCheck() ? QUESTIONS
   : meshes.filter(m => want === "all" || m.userData.level === want).sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1)); };
 const answeredIn = list => list.filter(x => (saved.items[x.key || x.userData.id] || {}).verdict).length;
+function finish(list) {
+  light([]); picked = null; fit();
+  const open = list.map((q, i) => (saved.items[q.key] || {}).verdict ? null : i + 1).filter(Boolean);
+  $("el").innerHTML = `<h2 style="margin-top:0">${open.length ? `${list.length - open.length} of ${list.length} questions answered` : "All questions answered. Thank you!"}</h2>`
+    + (open.length ? `<p>Still open: question ${open.join(", ")}. Press Previous to go back.</p>` : "")
+    + `<p><b>Last step, about 2 minutes:</b> answer the <b>Overall questions</b>, now open on the left.</p>`
+    + `<p>Then email your feedback file <b>${esc(fileName)}</b> to the person who sent you this folder.`
+    + (fileOk ? ` It is the file you chose when you gave your first answer.` : ` Press <b>Download feedback</b> below to get it.`) + `</p>`;
+  $("overall").open = true; $("overall").scrollIntoView({block: "nearest"});
+}
 function stepThrough(dir) {
   const list = currentList();
   if (!list.length) { $("el").textContent = "Nothing in this list."; return; }
+  if (inCheck() && dir > 0 && step === list.length - 1) { step = list.length; return finish(list); }
+  if (step >= list.length) step = dir > 0 ? -1 : list.length;
   step = (step + dir + list.length) % list.length;
   const counter = `${inCheck() ? "Question " : ""}${step + 1} of ${list.length} (${answeredIn(list)} answered)`;
   if (inCheck()) ask(list[step], counter); else select(list[step].userData.id, true, counter);

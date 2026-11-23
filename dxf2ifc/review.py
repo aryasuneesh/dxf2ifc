@@ -137,8 +137,8 @@ def _line_array(drawing):
 
 
 def _ifc_ids(ifc_path, source_file) -> dict:
-    """Plan element id -> IFC GlobalId. A door wins over the opening it fills; a bare opening (a gap) maps to the
-    wall it cuts, because a void has no geometry of its own to show or click."""
+    """Plan element id -> IFC GlobalId. A door wins over the opening it fills; a bare opening (a gap) keeps its own
+    id, and the 3D view draws it as a see-through box."""
     if not ifc_path:
         return {}
     import ifcopenshell
@@ -149,10 +149,7 @@ def _ifc_ids(ifc_path, source_file) -> dict:
     for product in model.by_type("IfcProduct"):
         trust = element.get_pset(product, "SECO_Trust") or {}
         if trust.get("SourceFile") == source_file and trust.get("ElementId"):
-            if product.is_a("IfcOpeningElement"):
-                if trust["ElementId"] not in ids and product.VoidsElements:
-                    ids[trust["ElementId"]] = product.VoidsElements[0].RelatingBuildingElement.GlobalId
-            else:
+            if trust["ElementId"] not in ids or not product.is_a("IfcOpeningElement"):
                 ids[trust["ElementId"]] = product.GlobalId
     return ids
 
@@ -170,16 +167,38 @@ def review_list(plan) -> list[dict]:
     return review
 
 
+# Drawing-wide flags that are about every element of a type: the 3D view asks about them on those elements.
+TYPE_FLAGS = (("stairs are modelled", "IfcStair"), ("fire-safety symbols", "IfcBuildingElementProxy"),
+              ("door height is a default", "IfcDoor"), ("window sill", "IfcWindow"))
+
+
 def viewer_notes(plan, ifc_path) -> tuple[dict, list]:
-    """What to check, for the 3D view: {IFC GlobalId: [reasons]} per element, and reasons about the whole drawing."""
-    ids, notes, general = _ifc_ids(ifc_path, plan["source"]["file"]), {}, []
+    """What to check, for the 3D view: {IFC GlobalId: [reasons]} per element, and things that are not in the model
+    at all (a door tag with no opening, a room that did not close), grouped: "Room not closed (6): a; b; ..."."""
+    import ifcopenshell
+
+    ids, notes, missing = _ifc_ids(ifc_path, plan["source"]["file"]), {}, {}
+    model = ifcopenshell.open(str(ifc_path))
+    add = lambda gid, reason: notes.setdefault(gid, []).append(reason)
     for flag in review_list(plan):
-        reason = flag["reason"][:1].upper() + flag["reason"][1:]
-        if flag["element_id"] in ids:
-            notes.setdefault(ids[flag["element_id"]], []).append(reason)
+        reason, eid = flag["reason"][:1].upper() + flag["reason"][1:], flag["element_id"]
+        kind = next((t for words, t in TYPE_FLAGS if words in flag["reason"]), None)
+        if eid in ("storey", "slab") or (eid == "file" and "drawn as a single line" in reason):
+            continue  # storey and slab values: one question below; single-line walls are asked wall by wall
+        if kind:
+            for product in model.by_type(kind):
+                add(product.GlobalId, reason)
+        elif eid in ids:
+            add(ids[eid], reason)
         else:
-            general.append(reason)
-    general += [f"{what}: {value} ({why})" for what, value, why in _defaults(plan)]
+            head, _, tail = reason.partition(": ")
+            missing.setdefault(head, []).append(tail.replace(" ()", ""))
+    slab = next((ids[s] for s in ("slab",) if s in ids), None) or next((p.GlobalId for p in model.by_type("IfcSlab")), None)
+    if slab:
+        add(slab, "Values assumed for the whole storey: " + "; ".join(
+            f"{what} {value} ({why.rstrip('.')})" for what, value, why in _defaults(plan)[:3]))
+    general = [f"{head} ({len(tails)}): " + "; ".join(t for t in tails[:8] if t) + ("; …" if len(tails) > 8 else "")
+               if any(tails) else head for head, tails in missing.items()]
     return notes, general
 
 

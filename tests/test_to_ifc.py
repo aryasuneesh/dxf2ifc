@@ -176,7 +176,9 @@ def test_viewer_page_carries_ids_and_confidence(tmp_path):
     page = (tmp_path / "viewer.html").read_text(encoding="utf-8")
     ids = {w.GlobalId for w in ifcopenshell.open(tmp_path / "model.ifc").by_type("IfcWall")}
     assert shown >= len(ids) and all(i in page for i in ids)
-    assert '"level":"high"' in page and "IfcOpeningElement" not in page
+    model = ifcopenshell.open(tmp_path / "model.ifc")  # keep it alive: its entities die with it
+    bare = [o for o in model.by_type("IfcOpeningElement") if not o.HasFillings]
+    assert '"level":"high"' in page and page.count('"type":"IfcOpeningElement"') == len(bare)  # gaps only, not door voids
 
 
 @pytest.mark.parametrize("schema", ["IFC4", "IFC2X3"])

@@ -320,6 +320,11 @@ def test_columns_round_and_square(tmp_path):
     assert any("2 columns are modelled" in f["reason"] for f in plan["flags"])
 
 
+def test_fence_posts_are_not_columns():
+    from dxf2ifc.roles import rule_role
+    assert rule_role("P501_CLOTURE-POTEAU") is None and rule_role("10 POTEAUX") == "column"
+
+
 def test_fire_symbols_from_blocks_and_clusters(tmp_path):
     def add_fire(msp):
         doc = msp.doc

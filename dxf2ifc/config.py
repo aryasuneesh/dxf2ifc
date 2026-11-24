@@ -41,7 +41,7 @@ ROLE_PATTERNS = [
     ("wall", rf"{_B}murs?{_E}|cloison|voile|ma[cç]onnerie|porteu[rs]|w[aä]nd|mauer|{_B}walls?{_E}"),
     ("door", rf"{_B}portes?{_E}|ouvrant|t(ü|ue)r|door"),
     ("window", r"fen[eê]tre|ch[aâ]ssis|vitrage|fenster|window|glaz"),
-    ("column", rf"poteau|pilier|st(ü|ue)tze|column|{_B}cols{_E}"),
+    ("column", rf"^(?!.*(cl[oô]ture|fence|zaun)).*(poteau|pilier|st(ü|ue)tze|column|{_B}cols{_E})"),  # not fence posts
     ("stair", rf"escalier|treppe|stair|{_B}strs{_E}"),
     ("dimension", rf"{_B}cot(e|es|ation|ations)?{_E}|{_B}dim|bema(ss|ß)|ma(ss|ß)(kette|linie)"),
     ("text", rf"text|annot|beschrift|label|{_B}txt"),

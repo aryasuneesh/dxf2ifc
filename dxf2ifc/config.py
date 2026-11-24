@@ -110,10 +110,13 @@ TREAD_LEN_TOL = 0.10  # treads of one flight differ in length by less than this 
 TREAD_MIN_COUNT = 6  # fewer parallel treads are not a stair
 FLIGHT_JOIN = 0.6  # m, flights and landings this close are one stair
 FLIGHT_MIN_AREA = 1.5  # m2, a smaller run of treads is a pattern, not a stair
+CONF_RAILING = 0.4  # no plan draws a balustrade's height or kind
 CONF_STAIR_LAYER, CONF_STAIR_TREADS = 0.6, 0.5  # outline found; steps and direction are assumed
 STAIR_RISE = 0.175  # m, target riser height of the assumed steps
 STAIR_U_WIDTH = 1.8  # m, an outline at least this wide holds two flights side by side (U stair, half landing)
 STAIR_WAIST = 0.2  # m, concrete under each step
+STAIR_MIN_NUMBERS = 4  # tread numbers needed to follow them
+STAIR_LABEL_REACH = 0.2  # m, tread numbers and the riser label may sit this far outside the outline on the open side of a turning stair
 MAX_TREAD_CANDIDATES = 50_000  # above this the tread search is skipped
 
 # columns: closed outlines, circles and hatches on column layers

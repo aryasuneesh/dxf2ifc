@@ -224,8 +224,10 @@ class _Writer:
             if self.old:
                 product.ShapeType = "NOTDEFINED"  # mandatory in IFC2X3
             self.place(product, elevation)
-            self.body_of(product, _steps(stair["polygon"], height), stair["confidence"])
-            self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"], stair["src"])
+            steps = (_numbered_steps(stair["polygon"], stair["path"], height, stair.get("risers")) if stair.get("path")
+                     else _steps(stair["polygon"], height))
+            self.body_of(product, steps, stair["confidence"])
+            self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"] + ("+numbers" if stair.get("path") else ""), stair["src"])
             stairs.append(product)
 
         columns = []
@@ -354,6 +356,46 @@ def _door_operation(span, swing):
     """IFC door operation: hinge on the left or right, seen from the side the door opens to."""
     at_start, side = _swing_side(span, swing)
     return "SINGLE_SWING_LEFT" if at_start == (side > 0) else "SINGLE_SWING_RIGHT"
+
+
+def _numbered_steps(outline, path, height, risers=None):
+    """Steps along the tread numbers of the drawing. Each tread is centred on its number, as deep as the distance
+    to the next number, as wide as the flight: up to the outline, and not past half way to the other flight of a
+    U stair. Landings fill the long gaps between numbers.
+    ponytail: no balustrade; a sloped handrail needs a swept solid, add it if engineers ask."""
+    from shapely.geometry import LineString, Polygon
+
+    pts = np.array(path, float)
+    shape, n = Polygon(outline), len(pts)
+    rise = height / max(risers or 0, n + 1)  # the last number is the last tread; one more riser reaches the floor
+    steps = []
+    for i, p in enumerate(pts):
+        d = pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]
+        going = np.linalg.norm(pts[min(i + 1, n - 1)] - p) if i < n - 1 else np.linalg.norm(p - pts[i - 1])
+        if going > 3 * np.median(np.linalg.norm(np.diff(pts, axis=0), axis=1)):  # a landing comes next: keep the tread
+            going = np.linalg.norm(p - pts[i - 1]) if i else 0.3
+        u = d / (np.linalg.norm(d) or 1)
+        v = np.array([-u[1], u[0]])
+        half = []
+        for side in (1, -1):
+            ray = LineString([p, p + side * v * 10])
+            hit = ray.intersection(shape.exterior)
+            reach = min((np.linalg.norm(np.array(q.coords[0]) - p) for q in getattr(hit, "geoms", [hit]) if not q.is_empty),
+                        default=0.6)
+            others = [np.dot(q - p, side * v) for j, q in enumerate(pts) if abs(j - i) > 3 and abs(np.dot(q - p, u)) < going]
+            others = [o for o in others if o > 0]
+            if others:
+                reach = min(reach, min(others) / 2)
+            half.append(min(reach, 1.5))
+        top = (i + 1) * rise
+        corners = [p + u * a * going / 2 + v * b for a, b in ((-1, -half[1]), (1, -half[1]), (1, half[0]), (-1, half[0]))]
+        bottom = max(0.0, top - rise - config.STAIR_WAIST)
+        steps.append(([tuple(map(float, c)) for c in corners], bottom, top - bottom))
+    landing = [j for j in range(n - 1) if np.linalg.norm(pts[j + 1] - pts[j]) > 3 * np.median(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+    for j in landing:  # the platform between two flights, at the height of the tread before it
+        both = Polygon(steps[j][0]).union(Polygon(steps[j + 1][0])).minimum_rotated_rectangle
+        steps.append(([tuple(c) for c in list(both.exterior.coords)[:-1]], max(0.0, (j + 1) * rise - config.STAIR_WAIST), min((j + 1) * rise, config.STAIR_WAIST)))
+    return steps
 
 
 def _steps(outline, height):

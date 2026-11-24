@@ -86,7 +86,7 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 <script>__THREE__</script>
 <script>
 const DATA = __DATA__, SETUP = __SETUP__, COLOURS = SETUP.colours, NOTES = SETUP.notes, $ = id => document.getElementById(id);
-const TYPE_COLOURS = {walls: "#cfc8bd", openings: "#8d6e63", rooms: "#9cc9f0", slabs: "#b9bcc2", stairs: "#a1887f", columns: "#78909c", "fire safety": "#7e57c2", gaps: "#ff7043"};
+const TYPE_COLOURS = {walls: "#cfc8bd", openings: "#8d6e63", rooms: "#9cc9f0", slabs: "#b9bcc2", stairs: "#a1887f", columns: "#78909c", railings: "#546e7a", "fire safety": "#7e57c2", gaps: "#ff7043"};
 const WINDOW_COLOUR = "#5aa9e6", esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 // ---------------------------------------------------------------- scene
@@ -388,7 +388,7 @@ addEventListener("keydown", e => {
 });
 const plan = $("planimg");
 if (plan) plan.onclick = () => $("planbox").classList.toggle("big"); else $("planbox").hidden = true;
-window.viewer = { select, meshes };
+window.viewer = { select, meshes, camera, controls, THREE };  // for scripted views and screenshots
 const fromHash = () => location.hash.length > 1 && select(decodeURIComponent(location.hash.slice(1)));
 addEventListener("hashchange", fromHash); fromHash();
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });

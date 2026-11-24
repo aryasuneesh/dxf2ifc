@@ -658,6 +658,9 @@ def _tread_runs(segments):
     return runs
 
 
+RISERS_RE = re.compile(r"(\d{1,2})\s*[x×*]\s*\d{2,3}(?:[.,]\d+)?\s*=")  # "17 x 175 = 300": 17 risers
+
+
 def _stairs(drawing, roles, flags, building):
     """Stair outlines, from stair layers or from tread runs. The steps are laid out in to_ifc.
     Only stairs whose centre is inside the building's extent count: ramps, kerbs and site steps are outside it."""
@@ -688,13 +691,39 @@ def _stairs(drawing, roles, flags, building):
     stairs = []
     for polygon, conf, rule, parts in found:
         points = [[round(x, 3), round(y, 3)] for x, y in list(polygon.exterior.coords)[:-1]]
+        path, risers = _step_numbers(drawing, polygon)
         stairs.append({"id": f"s{len(stairs) + 1}", "polygon": points, "confidence": conf, "rule": rule,
+                       "path": path, "risers": risers,
                        "src": {"layer": parts[0].layer, "handles": list(dict.fromkeys(s.handle for s in parts))}})
-    if stairs:
+    numbered = sum(bool(s["path"]) for s in stairs)
+    if numbered:
         flags.append({"element_id": "file", "severity": "review",
-                      "reason": f"{len(stairs)} stairs are modelled from their outline: steps, landing and the "
-                                "direction up are assumed; check position and direction"})
+                      "reason": f"stairs are modelled from the numbered treads on the drawing ({numbered} of "
+                                f"{len(stairs)}): the steps follow the numbers up; check the step count and the landings"})
+    if numbered < len(stairs):
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"{len(stairs) - numbered} stairs are modelled from their outline: steps, landing and "
+                                "the direction up are assumed; check position and direction"})
     return stairs
+
+
+def _step_numbers(drawing, outline):
+    """The walking line of a stair: the centres of its tread numbers (1, 2, 3 ...) in order, and the riser
+    count from a label like "17 x 175 = 300". ([], None) when fewer than config.STAIR_MIN_NUMBERS are drawn."""
+    area = outline.buffer(config.STAIR_LABEL_REACH)
+    at, risers = {}, None
+    for label in drawing.labels:
+        x, y = _center(label)
+        if not area.contains(Point(x, y)):
+            continue
+        text = label.text.strip()
+        if re.fullmatch(r"\d{1,2}", text):
+            at.setdefault(int(text), (round(x, 3), round(y, 3)))
+        elif match := RISERS_RE.search(text):
+            risers = int(match.group(1))
+    if len(at) < config.STAIR_MIN_NUMBERS:
+        return [], risers
+    return [list(at[n]) for n in sorted(at)], risers
 
 
 # ---------------------------------------------------------------- fire safety

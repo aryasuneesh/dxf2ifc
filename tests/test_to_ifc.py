@@ -221,3 +221,17 @@ def test_door_swing_and_window_glass():
     assert _door_operation(span, {"hinge": [0.9, 0], "into": [0.9, 0.9]}) == "SINGLE_SWING_RIGHT"
     window = _window([[0, 0], [1.5, 0]], wall, {"sill_m": 0.9, "height_m": 1.2})
     assert sum(p[3:] == ("glass",) for p in window) == 1 and len(window) == 6  # frame, glass, middle bar
+
+
+def test_numbered_stair_follows_the_numbers_round_a_u_turn():
+    from dxf2ifc.to_ifc import _numbered_steps
+    outline = [[0, 0], [5, 0], [5, 2.4], [0, 2.4]]
+    up = [[0.3 + 0.28 * i, 0.6] for i in range(8)]  # first flight along the bottom half
+    back = [[0.3 + 0.28 * i, 1.8] for i in range(7, -1, -1)]  # second flight back along the top half
+    steps = _numbered_steps(outline, up + back, 3.06, risers=17)
+    treads, landings = steps[:16], steps[16:]
+    assert len(landings) == 1  # the long jump from number 8 to 9
+    tops = [round(b + d, 3) for _, b, d in treads]
+    assert tops == sorted(tops) and tops[-1] == pytest.approx(16 * 0.18)
+    ys = [y for _, y in treads[0][0]]
+    assert max(ys) <= 1.2 + 1e-6  # the first flight stays in its half of the outline

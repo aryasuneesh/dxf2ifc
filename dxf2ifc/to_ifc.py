@@ -123,9 +123,14 @@ class _Writer:
 
     def solid(self, product, outline, bottom, depth, confidence=None, kind="solid"):
         """Give the product a body: the outline pushed up by depth, starting at bottom (above the storey)."""
-        curve = self.builder.polyline([(float(x), float(y)) for x, y in outline], closed=True)
-        item = self.builder.extrude(curve, magnitude=float(depth), position=(0.0, 0.0, float(bottom)))
-        shape = self.builder.get_representation(self.body, [item])
+        self.body_of(product, [(outline, bottom, depth)], confidence, kind)
+
+    def body_of(self, product, parts, confidence=None, kind="solid"):
+        """A body of several extruded outlines, [(outline, bottom, depth)]: the steps of a stair."""
+        items = [self.builder.extrude(self.builder.polyline([(float(x), float(y)) for x, y in outline], closed=True),
+                                      magnitude=float(depth), position=(0.0, 0.0, float(bottom)))
+                 for outline, bottom, depth in parts]
+        shape = self.builder.get_representation(self.body, items)
         api.geometry.assign_representation(self.f, product=product, representation=shape)
         if confidence is not None:
             api.style.assign_representation_styles(self.f, shape_representation=shape,
@@ -204,12 +209,12 @@ class _Writer:
         self.trust(slab, plan, "slab", slab_info["confidence"], slab_info["rule"])
 
         stairs = []
-        for stair in plan.get("stairs", []):  # an outline block: the engineer sees where, not how
-            product = self.root("IfcStair", f"Stair {stair['id']} (outline)", *key(stair))
+        for stair in plan.get("stairs", []):  # steps laid out in the outline; the direction up is a guess
+            product = self.root("IfcStair", f"Stair {stair['id']}", *key(stair))
             if self.old:
                 product.ShapeType = "NOTDEFINED"  # mandatory in IFC2X3
             self.place(product, elevation)
-            self.solid(product, stair["polygon"], 0.0, height, stair["confidence"])
+            self.body_of(product, _steps(stair["polygon"], height), stair["confidence"])
             self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"], stair["src"])
             stairs.append(product)
 
@@ -268,6 +273,39 @@ def _strip(axis, thickness):
     length = math.hypot(x2 - x1, y2 - y1)
     nx, ny = -(y2 - y1) / length * thickness / 2, (x2 - x1) / length * thickness / 2
     return [(x1 + nx, y1 + ny), (x2 + nx, y2 + ny), (x2 - nx, y2 - ny), (x1 - nx, y1 - ny)]
+
+
+def _steps(outline, height):
+    """The steps of a stair that fills a rectangular outline, as [(footprint, bottom, depth)].
+    Narrow outline: one straight flight along its length. Wide outline: a U stair, two flights side by side
+    with a half landing at the far end. Risers of about config.STAIR_RISE up to the next floor.
+    ponytail: the direction up and the U/straight choice come from the outline alone; read the tread lines and
+    the arrow on the drawing if engineers say the direction matters. Not a rectangle: one block, as before."""
+    if len(outline) != 4:
+        return [(outline, 0.0, height)]
+    p0, p1, p3 = (np.array(outline[i], float) for i in (0, 1, 3))
+    a, b = p1 - p0, p3 - p0
+    u, v = (a, b) if np.linalg.norm(a) >= np.linalg.norm(b) else (b, a)
+    length, width = np.linalg.norm(u), np.linalg.norm(v)
+    u, v = u / length, v / width
+    risers = max(2, round(height / config.STAIR_RISE))
+    rise = height / risers
+
+    def step(s0, s1, t0, t1, top):
+        corners = [p0 + u * s + v * t for s, t in ((s0, t0), (s1, t0), (s1, t1), (s0, t1))]
+        bottom = max(0.0, top - rise - config.STAIR_WAIST)
+        return [(float(x), float(y)) for x, y in corners], bottom, top - bottom
+
+    if width < config.STAIR_U_WIDTH:
+        going = length / risers
+        return [step(i * going, (i + 1) * going, 0, width, (i + 1) * rise) for i in range(risers)]
+    first, landing = risers // 2, min(width / 2, length / 3)
+    run = length - landing
+    up = [step(i * run / first, (i + 1) * run / first, 0, width / 2, (i + 1) * rise) for i in range(first)]
+    rest = risers - first
+    back = [step(run - (j + 1) * run / rest, run - j * run / rest, width / 2, width, (first + j + 1) * rise)
+            for j in range(rest)]
+    return up + [step(run, length, 0, width, first * rise)] + back
 
 
 def write_ifc(plans: list[dict], out_path, schema=config.IFC_SCHEMA, roof=False) -> list[str]:

@@ -193,3 +193,12 @@ def test_stairs_and_roof_are_valid(tmp_path, schema):
     assert len(ifc.by_type("IfcStair")) == 1 and len(ifc.by_type("IfcRoof")) == 1
     assert element.get_pset(ifc.by_type("IfcRoof")[0], "SECO_Trust")["Rule"] == "assumed_flat_roof"
     assert [p.ObjectType for p in ifc.by_type("IfcBuildingElementProxy")] == ["Fire extinguisher"]
+
+
+def test_stairs_have_steps_up_to_the_next_floor():
+    from dxf2ifc.to_ifc import _steps
+    straight = _steps([[0, 0], [5, 0], [5, 1.2], [0, 1.2]], 3.15)
+    assert len(straight) == 18 and max(b + d for _, b, d in straight) == pytest.approx(3.15)
+    u = _steps([[0, 0], [5, 0], [5, 2.4], [0, 2.4]], 3.15)
+    assert len(u) == 19  # two flights and the landing
+    assert sorted(round(b + d, 3) for _, b, d in u)[-1] == pytest.approx(3.15)

@@ -26,7 +26,7 @@ from . import config
 from .schema import level
 
 HEX = {name: "#%02x%02x%02x" % tuple(round(c * 255) for c in rgb) for name, rgb in config.CONFIDENCE_COLOURS.items()}
-NOT_MODELLED = ["Curved walls", "Columns and beams", "Stairs and ramps", "Roofs", "Furniture and equipment",
+NOT_MODELLED = ["Curved walls", "Columns and beams", "Ramps", "Roofs", "Furniture and equipment",
                 "Anything shown only on sections or elevations (true heights, level changes)"]
 
 

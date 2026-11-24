@@ -288,7 +288,7 @@ def test_stair_found_from_treads_on_any_layer(tmp_path):
     assert len(plan["stairs"]) == 1 and plan["stairs"][0]["rule"] == "tread_run"
     xs, ys = zip(*plan["stairs"][0]["polygon"])
     assert max(xs) - min(xs) == pytest.approx(1.2, abs=0.01) and max(ys) - min(ys) == pytest.approx(2.52, abs=0.01)
-    assert any("stairs are modelled as a block outline" in f["reason"] for f in plan["flags"])
+    assert any("stairs are modelled from their outline" in f["reason"] for f in plan["flags"])
 
 
 def test_stair_layer_outline(tmp_path):

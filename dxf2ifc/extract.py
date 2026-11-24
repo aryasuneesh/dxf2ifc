@@ -655,7 +655,7 @@ def _tread_runs(segments):
 
 
 def _stairs(drawing, roles, flags, building):
-    """Stair outlines, from stair layers or from tread runs. No steps or rise are modelled.
+    """Stair outlines, from stair layers or from tread runs. The steps are laid out in to_ifc.
     Only stairs whose centre is inside the building's extent count: ramps, kerbs and site steps are outside it."""
     x1, y1, x2, y2 = building
     inside = lambda shape: x1 <= shape.centroid.x <= x2 and y1 <= shape.centroid.y <= y2
@@ -688,8 +688,8 @@ def _stairs(drawing, roles, flags, building):
                        "src": {"layer": parts[0].layer, "handles": list(dict.fromkeys(s.handle for s in parts))}})
     if stairs:
         flags.append({"element_id": "file", "severity": "review",
-                      "reason": f"{len(stairs)} stairs are modelled as a block outline only (no steps, no rise); "
-                                "check their position"})
+                      "reason": f"{len(stairs)} stairs are modelled from their outline: steps, landing and the "
+                                "direction up are assumed; check position and direction"})
     return stairs
 
 

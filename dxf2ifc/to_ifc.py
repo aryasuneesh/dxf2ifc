@@ -6,6 +6,7 @@ Every body is an extruded outline in plan coordinates, lifted to the storey elev
 """
 
 import math
+import re
 import uuid
 from pathlib import Path
 
@@ -14,6 +15,8 @@ import ifcopenshell.api.aggregate
 import ifcopenshell.api.context
 import ifcopenshell.api.feature
 import ifcopenshell.api.geometry
+import ifcopenshell.api.material
+import ifcopenshell.api.type
 import ifcopenshell.api.owner
 import ifcopenshell.api.owner.settings
 import ifcopenshell.api.project
@@ -75,7 +78,7 @@ class _Writer:
         model = api.context.add_context(f, context_type="Model")
         self.body = api.context.add_context(f, context_type="Model", context_identifier="Body",
                                             target_view="MODEL_VIEW", parent=model)
-        self.styles = {}
+        self.styles, self.wall_types = {}, {}
         for name, (red, green, blue) in config.CONFIDENCE_COLOURS.items():
             for kind, transparency in (("solid", 0.0), ("space", config.SPACE_TRANSPARENCY)):
                 style = api.style.add_style(f, name=f"confidence {name} ({kind})")
@@ -143,6 +146,22 @@ class _Writer:
             for item, glass in items:
                 api.style.assign_item_style(self.f, item=item, style=self.glass if glass else self.styles[level(confidence), kind])
 
+    def wall_type(self, thickness, layer):
+        """One IfcWallType per thickness and material, with a single material layer of that thickness."""
+        name = next((m for m, pattern in config.WALL_MATERIAL_WORDS if re.search(pattern, layer or "", re.IGNORECASE)), None)
+        name = name or next(m for limit, m in config.WALL_MATERIAL_BY_THICKNESS if thickness <= limit)
+        key = (round(thickness, 3), name)
+        if key not in self.wall_types:
+            label = f"{round(thickness * 1000)} mm {name}"
+            wall_type = self.root("IfcWallType", f"Wall {label}", "walltype", *key, predefined_type="STANDARD")
+            material = api.material.add_material(self.f, name=name, category=None if self.old else name.split(" (")[0].lower())
+            layers = api.material.add_material_set(self.f, name=label, set_type="IfcMaterialLayerSet")
+            layer_item = api.material.add_layer(self.f, layer_set=layers, material=material)
+            api.material.edit_layer(self.f, layer=layer_item, attributes={"LayerThickness": float(thickness)})
+            api.material.assign_material(self.f, products=[wall_type], material=layers)
+            self.wall_types[key] = wall_type
+        return self.wall_types[key]
+
     def storey(self, plan):
         f, info = self.f, plan["storey"]
         tag, elevation, height = plan["source"]["project"], info["elevation_m"], info["height_m"]
@@ -164,6 +183,7 @@ class _Writer:
             self.pset(product, "Pset_WallCommon", {"Reference": f"{round(thickness * 1000)} mm",
                                                    "IsExternal": wall["is_external"]})
             self.trust(product, plan, wall["id"], wall["confidence"], wall["rule"], wall["src"])
+            api.type.assign_type(f, related_objects=[product], relating_type=self.wall_type(thickness, wall["src"].get("layer")))
             walls[wall["id"]] = (product, wall)
 
         for wall in plan.get("curved_walls", []):  # the ring between the two arcs, full storey height

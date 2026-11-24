@@ -160,8 +160,11 @@ let colourBy = "confidence", sensorsOn = false;
 const hash = s => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 const reading = id => { const h = hash(id), t = Date.now() / 1000;
   return { temp: 19 + (h % 50) / 10 + 1.2 * Math.sin(t / 20 + h), co2: 450 + (h % 400) + 80 * Math.sin(t / 30 + h / 7) }; };
+// walls by material when coloured by type: concrete grey, masonry sand, plasterboard white, brick red, timber brown
+const MATERIAL_COLOURS = {Concrete: "#b0b3b8", Masonry: "#d9c7a7", Plasterboard: "#eeeae4", Brick: "#c47a5a", Timber: "#b08a5f"};
 const baseColour = d => colourBy === "confidence" ? (COLOURS[d.level] || "#9aa0a6")
-  : (d.type === "IfcWindow" ? WINDOW_COLOUR : TYPE_COLOURS[d.kind] || "#9aa0a6");
+  : d.type === "IfcWindow" ? WINDOW_COLOUR
+  : (d.kind === "walls" && MATERIAL_COLOURS[(d.material || "").split(" (")[0]]) || TYPE_COLOURS[d.kind] || "#9aa0a6";
 function paint() {
   for (const m of meshes) {
     const d = m.userData;
@@ -289,7 +292,7 @@ function describe(mesh, counter = "") {
   const d = mesh.userData, why = (NOTES[d.id] || []).join("; ");
   const also = QUESTIONS.filter(q => q.ids.length > 1 && q.ids.includes(d.id)).map(q => QUESTIONS.indexOf(q) + 1);
   const rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
-    ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Source", d.source],
+    ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Material", d.material], ["Source", d.source],
     ["Printed area", d.printed_area ? d.printed_area + " m2" : ""]];
   card({key: d.id, title: label(d), counter, question: "Is this element right?", whyText: why,
     why: why ? esc(why) + (also.length

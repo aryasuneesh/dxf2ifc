@@ -235,3 +235,12 @@ def test_numbered_stair_follows_the_numbers_round_a_u_turn():
     assert tops == sorted(tops) and tops[-1] == pytest.approx(16 * 0.18)
     ys = [y for _, y in treads[0][0]]
     assert max(ys) <= 1.2 + 1e-6  # the first flight stays in its half of the outline
+
+
+def test_walls_have_a_type_and_material_layer(model):
+    ifc, _ = model
+    for wall in ifc.by_type("IfcWall"):
+        wall_type = element.get_type(wall)
+        layers = element.get_material(wall_type).MaterialLayers
+        assert len(layers) == 1 and layers[0].LayerThickness == pytest.approx(float(wall.Name.split()[1]) / 1000)
+        assert "(assumed)" in layers[0].Material.Name  # the fixture's layer name says nothing about material

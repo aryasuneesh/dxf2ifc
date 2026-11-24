@@ -52,12 +52,23 @@ def elements(ifc_path) -> list[dict]:
             "level": str(trust.get("ConfidenceLevel", "")).lower(), "confidence": trust.get("Confidence"),
             "status": trust.get("Status", ""), "rule": trust.get("Rule", ""),
             "source": f"{trust.get('SourceFile', '')} / {trust.get('SourceLayer', '')}".strip(" /"),
-            "printed_area": trust.get("PrintedArea"),
+            "printed_area": trust.get("PrintedArea"), "material": _material(product),
             "v": [round(x, 3) for x in shape.geometry.verts], "f": list(shape.geometry.faces),
             "glass": _glass(shape.geometry) if not product.is_a("IfcSpace") else []})
         if not iterator.next():
             break
     return result
+
+
+def _material(product) -> str:
+    material = element.get_material(product, should_inherit=True)
+    if material is None:
+        return ""
+    if material.is_a("IfcMaterialLayerSetUsage"):
+        material = material.ForLayerSet
+    if material.is_a("IfcMaterialLayerSet"):
+        return " + ".join(layer.Material.Name for layer in material.MaterialLayers if layer.Material)
+    return getattr(material, "Name", "") or ""
 
 
 def _glass(geometry) -> list[int]:

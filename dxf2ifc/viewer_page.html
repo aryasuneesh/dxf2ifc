@@ -47,6 +47,7 @@ td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:
 <option value="confidence">by how sure the program is</option><option value="type">by element type</option></select></div>
 <div id="legend"></div>
 <div class="hint" id="legendnote"></div>
+<label><input type="checkbox" id="names" checked> room names</label>
 <details><summary>Show or hide</summary><div id="layers"></div>
 <label><input type="checkbox" id="sensors"> simulated room sensors</label></details>
 <div class="hint">Drag to turn, scroll to zoom, right-drag to pan, click an element.
@@ -95,8 +96,11 @@ camera.up.set(0, 0, 1);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
 $("view").appendChild(renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x888888, 2.2));
-const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(1, -2, 3); scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9a9488, 2.0));
+const sun = new THREE.DirectionalLight(0xfff6e8, 1.4); sun.position.set(1, -2, 3); scene.add(sun);
+const fill = new THREE.DirectionalLight(0xdde8ff, 0.5); fill.position.set(-2, 1, 1.5); scene.add(fill);
+// Thin dark outlines on solid elements: wall ends, door frames and each step stay readable in any colour.
+const edgeMat = new THREE.LineBasicMaterial({ color: 0x2b2f36, transparent: true, opacity: 0.45 });
 const groups = {}, meshes = [], box = new THREE.Box3();
 for (const item of DATA) {
   const g = new THREE.BufferGeometry();
@@ -104,6 +108,7 @@ for (const item of DATA) {
   const see = item.kind === "rooms" || item.kind === "gaps";  // see-through: a room's volume, the empty box of a gap
   const m = new THREE.MeshLambertMaterial({ transparent: see, opacity: see ? (item.kind === "gaps" ? 0.55 : 0.35) : 1, depthWrite: !see, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, m); mesh.userData = item; meshes.push(mesh);
+  if (!see) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(g, 25), edgeMat); e.raycast = () => {}; mesh.add(e); }
   (groups[item.kind] ||= new THREE.Group()).add(mesh); box.expandByObject(mesh);
 }
 for (const [kind, group] of Object.entries(groups)) {
@@ -118,6 +123,28 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.copy(centre); camera.position.copy(centre).add(new THREE.Vector3(size * 0.25, -size * 0.35, size * 0.3));
 controls.update();
 const home = camera.position.clone();
+// A faint 1 m grid under the model, for scale.
+{ const s = Math.ceil(Math.max(box.max.x - box.min.x, box.max.y - box.min.y) * 1.3 / 10) * 10 || 20;
+  const grid = new THREE.GridHelper(s, s, 0xc4c8cf, 0xe1e4e8); grid.rotation.x = Math.PI / 2;
+  grid.position.set(centre.x, centre.y, box.min.z - 0.01); scene.add(grid); }
+// Room names (and printed area) float in each room; they stay readable through walls.
+const names = new THREE.Group(); scene.add(names);
+const roomName = d => (d.long_name || "").replace(/\s*\(\s*\)\s*$/, "");  // "cave C.10 ()": the drawing left the brackets empty
+for (const m of meshes.filter(m => m.userData.kind === "rooms" && roomName(m.userData) && !/^Unnamed /.test(m.userData.long_name))) {
+  const d = m.userData, b = new THREE.Box3().setFromObject(m), lines = [roomName(d), d.printed_area ? d.printed_area + " m²" : ""].filter(Boolean);
+  const c = document.createElement("canvas"), x = c.getContext("2d"), px = 40;
+  x.font = `600 ${px}px Segoe UI, Arial, sans-serif`;
+  c.width = Math.ceil(Math.max(...lines.map(l => x.measureText(l).width))) + 32; c.height = lines.length * px * 1.25 + 20;
+  x.fillStyle = "rgba(255,255,255,0.88)"; x.beginPath(); x.roundRect(0, 0, c.width, c.height, 14); x.fill();
+  x.font = `600 ${px}px Segoe UI, Arial, sans-serif`; x.fillStyle = "#1c1c1c"; x.textBaseline = "top";
+  lines.forEach((l, i) => { if (i) x.font = `${px * 0.8}px Segoe UI, Arial, sans-serif`; x.fillText(l, 16, 10 + i * px * 1.25); });
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  const h = Math.min(0.55, Math.max(0.3, Math.sqrt((b.max.x - b.min.x) * (b.max.y - b.min.y)) / 12));  // bigger room, bigger name
+  sp.scale.set(h * c.width / c.height, h, 1); sp.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z + 1.4);
+  sp.renderOrder = 10; sp.raycast = () => {}; sp.userData.room = m; names.add(sp);
+}
+$("names").onchange = e => { names.visible = e.target.checked; };
 
 // ---------------------------------------------------------------- colours
 // The colours are added by this program, not taken from the drawing: by default they say how sure it is.
@@ -132,6 +159,7 @@ function paint() {
     const d = m.userData;
     if (sensorsOn && d.kind === "rooms") { const k = Math.min(1, Math.max(0, (reading(d.id).temp - 18) / 8)); m.material.color.setRGB(k, 0.35, 1 - k); }
     else m.material.color.set(baseColour(d));
+    if (d.type === "IfcWindow") { const glass = colourBy === "type"; m.material.transparent = glass; m.material.opacity = glass ? 0.45 : 1; }
   }
   $("legend").innerHTML = colourBy === "confidence"
     ? Object.entries(COLOURS).map(([k, c]) => `<span class="sw" style="background:${c}"></span>${k}: ${{high: "probably right", medium: "worth a look", low: "check this"}[k] || ""}`).join("<br>")
@@ -361,6 +389,7 @@ addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; cam
 // for photosensitive viewers); with "reduce motion" set in the system it stays lit instead.
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 renderer.setAnimationLoop(t => {
+  for (const sp of names.children) sp.visible = sp.userData.room.parent.visible;
   const k = still.matches ? 0.8 : 0.45 + 0.45 * Math.sin(t / 160);
   for (const m of lit) m.material.emissive.setRGB(k, 0.85 * k, 0);
   renderer.render(scene, camera);

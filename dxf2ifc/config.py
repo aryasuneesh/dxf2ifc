@@ -94,7 +94,8 @@ RASTER_MARGIN = 1.0  # m of empty space around the walls
 SEED_SEARCH = 0.5  # m, how far to look for free space when a label sits on a wall
 ROOM_MIN_AREA = 1.0  # m2, smaller unlabelled enclosed spaces are ignored
 ROOM_SIMPLIFY = 0.03  # m, simplification of room outlines
-SLAB_CLOSE = 0.3  # m, gaps closed when outlining the slab
+SLAB_CLOSE = 8.0  # m, gaps up to twice this are bridged: a car park entrance, a ring of rooms round an open hall
+# ponytail: a real courtyard narrower than 16 m gets a floor too; cut it out from the room list if that turns up
 EXTERNAL_DIST = 0.5  # m, a wall this close to the outline is external
 SINGLE_LINE_T = 0.10  # m, nominal thickness of a wall drawn as one line
 CONF_SINGLE_LINE = 0.3  # confidence of such a wall

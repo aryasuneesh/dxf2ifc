@@ -948,7 +948,8 @@ def _storey(drawing, elevation, height, used_labels, flags):
 def _slab(drawing, walls, rooms, flags):
     shapes = [Polygon(w.corners()) for w in walls] + [Polygon(r["polygon"]) for r in rooms]
     shapes = [s if s.is_valid else s.buffer(0) for s in shapes]
-    merged = unary_union(shapes).buffer(config.SLAB_CLOSE).buffer(-config.SLAB_CLOSE) if shapes else None
+    merged = (unary_union(shapes).buffer(config.SLAB_CLOSE, join_style=2).buffer(-config.SLAB_CLOSE, join_style=2)
+              if shapes else None)  # mitre joins keep the corners square
     if merged is not None and not merged.is_empty:
         largest = max(merged.geoms, key=lambda g: g.area) if hasattr(merged, "geoms") else merged
         boundary = largest.exterior.simplify(0.02)

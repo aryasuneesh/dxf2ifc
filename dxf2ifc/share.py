@@ -36,13 +36,17 @@ td:first-child{white-space:nowrap;font-weight:600}</style>"""
 def offline_page(names) -> bytes:
     """START HERE page of the zip sent by email: what to do, and every answer we need from the engineer."""
     e = html.escape
-    plans = "".join(f"<li><a href='{e(n)}/viewer.html'><b>{e(n)}</b></a></li>" for n in names) or "<li>No plans yet.</li>"
+    core = 2  # the first plans matter most; the rest are optional extras
+    plans = "".join(f"<li><a href='{e(n)}/viewer.html'><b>{e(n)}</b></a>{' (optional)' if i >= core else ''}</li>"
+                    for i, n in enumerate(names)) or "<li>No plans yet.</li>"
+    time = (f"about 10 minutes per plan. Please do the first {core}; the other {len(names) - core} are optional, "
+            "if you have time." if len(names) > core else f"about 10 minutes per plan, {len(names)} plan{'s' if len(names) != 1 else ''}.")
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>DXF to IFC: user test</title>{STYLE}</head><body>
 <h1>From a 2D plan to a model you can check</h1>
 <p>A program turned each floor plan below (a DXF drawing) into a 3D building model (IFC). Where the drawing did not say
 enough, the program made a guess. We would like you, as an engineer, to tell us whether those guesses are right.</p>
-<p><b>Time:</b> about 10 minutes per plan, {len(names)} plan{"s" if len(names) != 1 else ""}.</p>
+<p><b>Time:</b> {time}</p>
 
 <div class="box"><b>Before you start</b><ol>
 <li><b>Unzip the whole folder</b> (right-click the zip, Extract all). Files opened from inside the zip do not work.</li>

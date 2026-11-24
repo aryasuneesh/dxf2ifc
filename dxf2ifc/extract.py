@@ -366,11 +366,15 @@ def _place_swings(swings, walls, gaps, drawing):
                 closed = 0 if hosts[0][0] <= hosts[1][0] else 1
 
         # a gap in the wall at this spot already is this door (one gap can hold both leaves of a double door)
+        side = None if closed is None else {"hinge": [round(v, 3) for v in hinge],
+                                            "into": [round(v, 3) for v in swing["ends"][1 - closed]]}
         spots = mids if closed is None else [mids[closed]]
         same = [g for g in wall_gaps if any(
             math.dist(m, g["wall"].point(g["along"])) <= g["width"] / 2 + config.SWING_GAP_SLACK for m in spots)]
         if same:
             same[0]["symbols"].append(swing["handle"])
+            # one swing: its hinge and side; a second one (double door): no single hinge
+            same[0]["swing"] = side if len(same[0]["symbols"]) == 1 else None
             continue
         if closed is None:
             unplaced += 1
@@ -389,7 +393,7 @@ def _place_swings(swings, walls, gaps, drawing):
                          [swing["handle"]], "", config.CONF_SINGLE_LINE, "door_stub")
             walls.append(wall)
         gaps.append({"wall": wall, "along": (a + b) / 2, "width": b - a, "origin": "swing",
-                     "symbols": [swing["handle"]]})
+                     "symbols": [swing["handle"]], "swing": side})
     return unplaced
 
 
@@ -407,7 +411,7 @@ def _classify_openings(gaps, drawing, roles, family, used_labels, flags):
                for rank, pattern in enumerate((OUVERTURE_RE, HEIGHT_RE)) if (m := pattern.search(label.text))]
 
     openings = [{"wall": g["wall"], "center": g["wall"].point(g["along"]), "width": g["width"], "tag": None,
-                 "handles": [], "origin": g["origin"], "swings": g["symbols"]} for g in gaps]
+                 "handles": [], "origin": g["origin"], "swings": g["symbols"], "swing": g.get("swing")} for g in gaps]
 
     tags = []  # (text, centre, handles); tags glued into one label are taken apart again
     for label in drawing.labels:
@@ -471,7 +475,7 @@ def _classify_openings(gaps, drawing, roles, family, used_labels, flags):
             conf = min(conf, config.CONF_DEFAULT_CAP)
         handles = o["handles"] + [h for h in dict.fromkeys(symbols + windows) if h][:5]
         result.append({"kind": kind, "wall": o["wall"], "center": center, "width_m": width,
-                       "height_m": height, "sill_m": sill, "tag": o["tag"],
+                       "height_m": height, "sill_m": sill, "tag": o["tag"], "swing": o["swing"] if kind == "door" else None,
                        "confidence": _cap(conf, family), "rule": rule, "default_height": default_height,
                        "src": {"layer": o["wall"].layer, "handles": handles}})
     return result

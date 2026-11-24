@@ -85,6 +85,12 @@ class _Writer:
                 api.style.add_surface_style(f, style=style, ifc_class="IfcSurfaceStyleShading", attributes=attributes)
                 self.styles[name, kind] = style
 
+        self.glass = api.style.add_style(f, name="glass")
+        attributes = {"SurfaceColour": {"Name": None, "Red": 0.62, "Green": 0.8, "Blue": 0.92}}
+        if not self.old:
+            attributes["Transparency"] = config.GLASS_TRANSPARENCY
+        api.style.add_surface_style(f, style=self.glass, ifc_class="IfcSurfaceStyleShading", attributes=attributes)
+
         self.site = self.root("IfcSite", "Site", "site")
         self.building = self.root("IfcBuilding", self.name, "building")
         api.aggregate.assign_object(f, products=[self.site], relating_object=self.project)
@@ -126,15 +132,16 @@ class _Writer:
         self.body_of(product, [(outline, bottom, depth)], confidence, kind)
 
     def body_of(self, product, parts, confidence=None, kind="solid"):
-        """A body of several extruded outlines, [(outline, bottom, depth)]: the steps of a stair."""
-        items = [self.builder.extrude(self.builder.polyline([(float(x), float(y)) for x, y in outline], closed=True),
-                                      magnitude=float(depth), position=(0.0, 0.0, float(bottom)))
-                 for outline, bottom, depth in parts]
-        shape = self.builder.get_representation(self.body, items)
+        """A body of several extruded outlines, (outline, bottom, depth) or (outline, bottom, depth, "glass"):
+        the steps of a stair, the frame and leaf of a door. Glass parts get the glass style, the rest the confidence colour."""
+        items = [(self.builder.extrude(self.builder.polyline([(float(x), float(y)) for x, y in part[0]], closed=True),
+                                       magnitude=float(part[2]), position=(0.0, 0.0, float(part[1]))), part[3:] == ("glass",))
+                 for part in parts]
+        shape = self.builder.get_representation(self.body, [item for item, _ in items])
         api.geometry.assign_representation(self.f, product=product, representation=shape)
         if confidence is not None:
-            api.style.assign_representation_styles(self.f, shape_representation=shape,
-                                                   styles=[self.styles[level(confidence), kind]])
+            for item, glass in items:
+                api.style.assign_item_style(self.f, item=item, style=self.glass if glass else self.styles[level(confidence), kind])
 
     def storey(self, plan):
         f, info = self.f, plan["storey"]
@@ -181,7 +188,10 @@ class _Writer:
                 product = self.root(ifc_class, opening["tag"] or f"{opening['kind'].capitalize()} {opening['id']}", *ident)
                 product.OverallHeight, product.OverallWidth = float(opening["height_m"]), float(opening["width_m"])
                 self.place(product, elevation)
-                self.solid(product, _strip(span, config.LEAF_THICKNESS), opening["sill_m"], opening["height_m"], opening["confidence"])
+                parts = _door(span, wall, opening) if opening["kind"] == "door" else _window(span, wall, opening)
+                self.body_of(product, parts, opening["confidence"])
+                if opening["kind"] == "door" and opening.get("swing") and not self.old:
+                    product.OperationType = _door_operation(span, opening["swing"])
                 api.feature.add_filling(f, opening=void, element=product)
                 self.pset(product, f"Pset_{ifc_class[3:]}Common", {"Reference": opening["tag"], "IsExternal": wall["is_external"]})
                 self.trust(product, plan, opening["id"], opening["confidence"], opening["rule"], opening["src"])
@@ -281,6 +291,69 @@ def _strip(axis, thickness):
     length = math.hypot(x2 - x1, y2 - y1)
     nx, ny = -(y2 - y1) / length * thickness / 2, (x2 - x1) / length * thickness / 2
     return [(x1 + nx, y1 + ny), (x2 + nx, y2 + ny), (x2 - nx, y2 - ny), (x1 - nx, y1 - ny)]
+
+
+def _frame(span):
+    """Local frame of an opening: origin at the start of the span on the wall axis, u along it, n across."""
+    (x1, y1), (x2, y2) = span
+    width = math.hypot(x2 - x1, y2 - y1)
+    u = np.array([(x2 - x1) / width, (y2 - y1) / width])
+    return np.array([x1, y1], float), u, np.array([-u[1], u[0]]), width
+
+
+def _box(o, u, n, s0, s1, t0, t1, z0, z1, glass=False):
+    """A box in an opening's frame: s along the wall, t across it, z up."""
+    outline = [tuple(map(float, o + u * s + n * t)) for s, t in ((s0, t0), (s1, t0), (s1, t1), (s0, t1))]
+    return (outline, z0, z1 - z0, "glass") if glass else (outline, z0, z1 - z0)
+
+
+def _swing_side(span, swing):
+    """(hinge at the start of the span?, side it opens to: +1 along n, -1 against); no swing: (True, 1)."""
+    if not swing:
+        return True, 1.0
+    o, u, n, w = _frame(span)
+    hinge, into = np.array(swing["hinge"], float) - o, np.array(swing["into"], float) - o
+    return bool(hinge @ u < w / 2), (1.0 if into @ n >= 0 else -1.0)
+
+
+def _door(span, wall, opening):
+    """Frame (two jambs and a head), leaf, handle and, when the drawing shows it, the swing as a thin arc on the floor."""
+    o, u, n, w = _frame(span)
+    h, f, d = opening["height_m"], config.FRAME_WIDTH, min(wall["thickness_m"], config.FRAME_DEPTH)
+    parts = [_box(o, u, n, 0, f, -d / 2, d / 2, 0, h), _box(o, u, n, w - f, w, -d / 2, d / 2, 0, h),
+             _box(o, u, n, 0, w, -d / 2, d / 2, h - f, h)]
+    hinge_at_start, side = _swing_side(span, opening.get("swing"))
+    t0, t1 = sorted((side * d / 2, side * (d / 2 - config.LEAF_THICKNESS)))
+    parts.append(_box(o, u, n, f, w - f, t0, t1, 0.01, h - f))
+    s_handle = w - f - 0.12 if hinge_at_start else f + 0.04
+    parts.append(_box(o, u, n, s_handle, s_handle + 0.08, -d / 2 - 0.05, d / 2 + 0.05, 1.0, 1.03))
+    if opening.get("swing"):  # quarter circle from the closed leaf to the open position, on the side it opens to
+        r, sign = w - 2 * f, (1.0 if hinge_at_start else -1.0)
+        centre = o + u * (f if hinge_at_start else w - f) + n * side * d / 2
+        angles = np.linspace(0, math.pi / 2, 13)
+        ring = [centre + u * sign * r * math.cos(a) + n * side * r * math.sin(a) for a in angles]
+        ring += [centre + u * sign * (r - 0.03) * math.cos(a) + n * side * (r - 0.03) * math.sin(a) for a in angles[::-1]]
+        parts.append(([tuple(map(float, p)) for p in ring], 0.0, 0.005))
+    return parts
+
+
+def _window(span, wall, opening):
+    """Frame all round, a glass pane, and a middle bar when the window is wide."""
+    o, u, n, w = _frame(span)
+    b, h, f = opening["sill_m"], opening["sill_m"] + opening["height_m"], config.FRAME_WIDTH
+    d = min(wall["thickness_m"], config.FRAME_DEPTH)
+    parts = [_box(o, u, n, 0, f, -d / 2, d / 2, b, h), _box(o, u, n, w - f, w, -d / 2, d / 2, b, h),
+             _box(o, u, n, 0, w, -d / 2, d / 2, b, b + f), _box(o, u, n, 0, w, -d / 2, d / 2, h - f, h),
+             _box(o, u, n, f, w - f, -0.01, 0.01, b + f, h - f, glass=True)]
+    if w > config.WINDOW_SPLIT:
+        parts.append(_box(o, u, n, w / 2 - f / 2, w / 2 + f / 2, -d / 2, d / 2, b + f, h - f))
+    return parts
+
+
+def _door_operation(span, swing):
+    """IFC door operation: hinge on the left or right, seen from the side the door opens to."""
+    at_start, side = _swing_side(span, swing)
+    return "SINGLE_SWING_LEFT" if at_start == (side > 0) else "SINGLE_SWING_RIGHT"
 
 
 def _steps(outline, height):

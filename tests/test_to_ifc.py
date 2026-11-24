@@ -105,8 +105,10 @@ def test_tc33_every_element_carries_trust(model):
 
 def test_elements_are_coloured_by_confidence(model):
     ifc, _ = model
-    assert len(ifc.by_type("IfcSurfaceStyle")) == 6  # three levels, solid and see-through
-    assert len(ifc.by_type("IfcStyledItem")) == 5 + 2 + 2 + 1  # walls, doors, spaces, slab
+    assert len(ifc.by_type("IfcSurfaceStyle")) == 7  # three levels, solid and see-through, and glass
+    doors = ifc.by_type("IfcDoor")
+    assert all(len(d.Representation.Representations[0].Items) == 5 for d in doors)  # two jambs, head, leaf, handle
+    assert len(ifc.by_type("IfcStyledItem")) == 5 + 2 * 5 + 2 + 1  # walls, door parts, spaces, slab
 
 
 def test_tc34_same_input_gives_same_ids(tmp_path):
@@ -204,3 +206,18 @@ def test_stairs_have_steps_up_to_the_next_floor():
     u = _steps([[0, 0], [5, 0], [5, 2.4], [0, 2.4]], 3.15)
     assert len(u) == 19  # two flights and the landing
     assert sorted(round(b + d, 3) for _, b, d in u)[-1] == pytest.approx(3.15)
+
+
+def test_door_swing_and_window_glass():
+    from dxf2ifc.to_ifc import _door, _door_operation, _window
+    wall = {"thickness_m": 0.2}
+    span = [[0, 0], [0.9, 0]]
+    door = {"height_m": 2.1, "swing": {"hinge": [0, 0], "into": [0, 0.9]}}
+    parts = _door(span, wall, door)
+    assert len(parts) == 6  # jambs, head, leaf, handle, swing arc
+    arc = parts[-1][0]
+    assert min(y for _, y in arc) >= 0.05 and max(x for x, _ in arc) <= 0.9  # on the side it opens to
+    assert _door_operation(span, door["swing"]) == "SINGLE_SWING_LEFT"
+    assert _door_operation(span, {"hinge": [0.9, 0], "into": [0.9, 0.9]}) == "SINGLE_SWING_RIGHT"
+    window = _window([[0, 0], [1.5, 0]], wall, {"sill_m": 0.9, "height_m": 1.2})
+    assert sum(p[3:] == ("glass",) for p in window) == 1 and len(window) == 6  # frame, glass, middle bar

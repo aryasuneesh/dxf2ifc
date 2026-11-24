@@ -153,7 +153,10 @@ GUID_NAMESPACE = _uuid.UUID("5ec0b1a2-d2f1-4c0e-9a11-0d5f2a1c7e06")  # fixed, so
 CONFIDENCE_COLOURS = {"high": (0.2, 0.7, 0.3), "medium": (1.0, 0.6, 0.1), "low": (0.85, 0.2, 0.2)}
 SPACE_TRANSPARENCY = 0.7  # rooms are see-through
 OPENING_OVERCUT = 0.10  # m, an opening is this much deeper than its wall so it cuts cleanly
-LEAF_THICKNESS = 0.05  # m, body of a door or window
+LEAF_THICKNESS = 0.04  # m, door leaf
+FRAME_WIDTH, FRAME_DEPTH = 0.05, 0.12  # m, door and window frames (seen face, depth across the wall)
+WINDOW_SPLIT = 1.2  # m, a wider window gets a middle bar
+GLASS_TRANSPARENCY = 0.6
 CONF_ROOF = 0.3  # the roof is never drawn on a floor plan: always an assumption
 MAX_SOURCE_HANDLES = 20  # DXF handles listed per element
 

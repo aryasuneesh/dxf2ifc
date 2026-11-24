@@ -50,10 +50,17 @@ def elements(ifc_path) -> list[dict]:
             "status": trust.get("Status", ""), "rule": trust.get("Rule", ""),
             "source": f"{trust.get('SourceFile', '')} / {trust.get('SourceLayer', '')}".strip(" /"),
             "printed_area": trust.get("PrintedArea"),
-            "v": [round(x, 3) for x in shape.geometry.verts], "f": list(shape.geometry.faces)})
+            "v": [round(x, 3) for x in shape.geometry.verts], "f": list(shape.geometry.faces),
+            "glass": _glass(shape.geometry) if not product.is_a("IfcSpace") else []})
         if not iterator.next():
             break
     return result
+
+
+def _glass(geometry) -> list[int]:
+    """Triangles with a see-through style (window panes), as indices: the page draws them as glass."""
+    clear = {i for i, material in enumerate(geometry.materials) if material.transparency > 0}
+    return [t for t, m in enumerate(geometry.material_ids) if m in clear] if clear else []
 
 
 VENDOR = Path(__file__).parent / "vendor"

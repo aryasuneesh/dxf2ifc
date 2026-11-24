@@ -166,6 +166,14 @@ class _Writer:
             self.trust(product, plan, wall["id"], wall["confidence"], wall["rule"], wall["src"])
             walls[wall["id"]] = (product, wall)
 
+        for wall in plan.get("curved_walls", []):  # the ring between the two arcs, full storey height
+            product = self.root("IfcWall", f"Curved wall {round(wall['thickness_m'] * 1000)} mm", *key(wall))
+            self.place(product, elevation)
+            self.solid(product, _ring(wall), 0.0, height, wall["confidence"])
+            self.pset(product, "Pset_WallCommon", {"Reference": f"{round(wall['thickness_m'] * 1000)} mm curved"})
+            self.trust(product, plan, wall["id"], wall["confidence"], wall["rule"], wall["src"])
+            walls[wall["id"]] = (product, None)
+
         fillings = []
         for opening in plan["openings"]:
             host, wall = walls[opening["wall_id"]]
@@ -319,6 +327,16 @@ _EQUIPMENT_CLASS = {
     "chair": _FURNITURE("CHAIR"), "kitchen": _FURNITURE("NOTDEFINED"),
     "lift": (("IfcTransportElement", "ELEVATOR"), ("IfcTransportElement", None)),
 }
+
+
+def _ring(wall):
+    """Outline of a curved wall: the outer arc, then the inner arc back, about every 5 degrees."""
+    (cx, cy), r, half = wall["center"], wall["radius_m"], wall["thickness_m"] / 2
+    count = max(2, math.ceil((wall["end_deg"] - wall["start_deg"]) / 5))
+    angles = np.radians(np.linspace(wall["start_deg"], wall["end_deg"], count + 1))
+    outer = [(cx + (r + half) * math.cos(a), cy + (r + half) * math.sin(a)) for a in angles]
+    inner = [(cx + (r - half) * math.cos(a), cy + (r - half) * math.sin(a)) for a in angles[::-1]]
+    return outer + inner
 
 
 def _frame(span):

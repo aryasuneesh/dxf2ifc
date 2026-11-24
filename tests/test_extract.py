@@ -335,6 +335,16 @@ def test_furniture_and_fittings_from_block_names(tmp_path):
     assert Polygon(wc["polygon"]).area == pytest.approx(0.26, rel=0.02)
 
 
+def test_curved_wall_from_two_concentric_arcs(tmp_path):
+    def add_curve(msp):
+        msp.add_arc((5, 4), 3.0, 0, 90, dxfattribs={"layer": "MUR"})
+        msp.add_arc((5, 4), 3.2, 10, 80, dxfattribs={"layer": "MUR"})
+    plan, _ = run(tmp_path, edit=add_curve)
+    [wall] = plan["curved_walls"]
+    assert wall["radius_m"] == pytest.approx(3.1) and wall["thickness_m"] == pytest.approx(0.2)
+    assert (wall["start_deg"], wall["end_deg"]) == (10, 80)  # only where both arcs run
+
+
 def test_fence_posts_are_not_columns():
     from dxf2ifc.roles import rule_role
     assert rule_role("P501_CLOTURE-POTEAU") is None and rule_role("10 POTEAUX") == "column"

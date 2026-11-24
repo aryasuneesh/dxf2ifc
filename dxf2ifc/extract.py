@@ -690,6 +690,9 @@ def _stairs(drawing, roles, flags, building):
                 found.append((outline, config.CONF_STAIR_TREADS, "tread_run", [s for _, run in members for s in run]))
     stairs = []
     for polygon, conf, rule, parts in found:
+        a, b = (math.dist(*list(polygon.exterior.coords)[i:i + 2]) for i in (0, 1))
+        if min(a, b) < config.STAIR_MIN_WIDTH:  # a railing or a kerb drawn on the stair layer
+            continue
         points = [[round(x, 3), round(y, 3)] for x, y in list(polygon.exterior.coords)[:-1]]
         path, risers = _step_numbers(drawing, polygon)
         stairs.append({"id": f"s{len(stairs) + 1}", "polygon": points, "confidence": conf, "rule": rule,
@@ -767,6 +770,39 @@ def _fire_symbols(drawing, building, flags):
                       "reason": "fire-safety symbols placed from their drawing symbol, position only: "
                                 + ", ".join(f"{n} {kind}" for kind, n in sorted(counts.items()))})
     return symbols
+
+
+# ---------------------------------------------------------------- curved walls
+
+def _curved_walls(drawing, roles):
+    """Curved walls: pairs of concentric arcs on a wall layer, a wall thickness apart, over the angles both cover.
+    ponytail: no openings in curved walls and they do not close rooms; add both if curved plans turn up often."""
+    layers = {name for name, entry in roles["layers"].items() if entry["role"] == "wall"}
+    arcs = sorted((a for a in drawing.arcs if a.layer in layers and a.r >= config.CURVED_R_MIN), key=lambda a: a.r)
+    used, walls = set(), []
+    for i, a in enumerate(arcs):
+        for j in range(i + 1, len(arcs)):
+            b = arcs[j]
+            if i in used or j in used or math.dist((a.cx, a.cy), (b.cx, b.cy)) > config.CURVED_CENTRE_TOL:
+                continue
+            if not config.CURVED_T[0] <= b.r - a.r <= config.CURVED_T[1]:
+                continue
+            span = lambda arc: (arc.a0 % 360, arc.a0 % 360 + (arc.a1 - arc.a0) % 360 or 360)
+            (a0, a1), (b0, b1) = span(a), span(b)
+            if b0 > a1:
+                b0, b1 = b0 - 360, b1 - 360
+            elif a0 > b1:
+                b0, b1 = b0 + 360, b1 + 360
+            start, end = max(a0, b0), min(a1, b1)
+            if end - start < 5:  # degrees: they hardly overlap
+                continue
+            used.update((i, j))
+            walls.append({"id": f"cw{len(walls) + 1}", "center": [round(a.cx, 3), round(a.cy, 3)],
+                          "radius_m": round((a.r + b.r) / 2, 3), "thickness_m": round(b.r - a.r, 3),
+                          "start_deg": round(start, 2), "end_deg": round(end, 2),
+                          "confidence": config.CONF_CURVED, "rule": "concentric_arcs",
+                          "src": {"layer": a.layer, "handles": list(dict.fromkeys((a.handle, b.handle)))}})
+    return walls
 
 
 # ---------------------------------------------------------------- furniture and fittings
@@ -1015,12 +1051,17 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
         equipment = _equipment(drawing, building, flags)
     else:
         stairs, fire, columns, equipment = [], [], [], []
+    curved = _curved_walls(drawing, roles)
+    if curved:
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"{len(curved)} curved walls are modelled from paired arcs; they have no openings and "
+                                "do not close rooms: check doors in them and the rooms beside them"})
 
     plan = {
         "schema_version": 1,
         "source": {"file": Path(drawing.path).name, "project": drawing.project, "units_in": drawing.units_in,
                    "scale_to_m": drawing.scale_to_m, "origin_offset": list(drawing.origin_offset), "family": family},
-        "storey": storey, "walls": plan_walls, "openings": plan_openings,
+        "storey": storey, "walls": plan_walls, "curved_walls": curved, "openings": plan_openings,
         "rooms": [{"id": r["id"], **{k: v for k, v in r.items() if k != "id"}} for r in rooms],
         "slab": slab, "stairs": stairs, "columns": columns, "equipment": equipment, "fire": fire, "flags": flags,
         "stats": {"wall_layer_length_m": round(sum(s.length for s, _ in candidates), 2),

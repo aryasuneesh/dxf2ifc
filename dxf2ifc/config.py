@@ -103,6 +103,7 @@ FRAME_SPAN = 0.9  # a wall group spanning this share of the drawing both ways is
 
 # stairs: a stair-layer outline, or a run of parallel treads on any layer
 STAIR_LAYER_REACH = 0.6  # m, stair-layer lines this close are one stair (flights, landing, railing)
+STAIR_MIN_WIDTH = 0.6  # m, a narrower outline is a railing or kerb, not a flight
 STAIR_MIN_AREA = 3.0  # m2, smaller stair-layer groups are arrows, labels or loose pieces
 TREAD_LEN_MIN, TREAD_LEN_MAX = 0.8, 2.5  # m, width of a flight
 TREAD_GAP_MIN, TREAD_GAP_MAX = 0.20, 0.36  # m, going of one step
@@ -118,6 +119,12 @@ STAIR_WAIST = 0.2  # m, concrete under each step
 STAIR_MIN_NUMBERS = 4  # tread numbers needed to follow them
 STAIR_LABEL_REACH = 0.2  # m, tread numbers and the riser label may sit this far outside the outline on the open side of a turning stair
 MAX_TREAD_CANDIDATES = 50_000  # above this the tread search is skipped
+
+# curved walls: two concentric arcs on a wall layer, a wall thickness apart
+CURVED_R_MIN = 0.8  # m, smaller arcs are door swings and fillets
+CURVED_CENTRE_TOL = 0.03  # m
+CURVED_T = (0.05, 0.6)  # m, allowed thickness
+CONF_CURVED = 0.6
 
 # columns: closed outlines, circles and hatches on column layers
 COLUMN_REACH = 0.05  # m, pieces this close are one column (outline, hatch, the quarter arcs of a circle)

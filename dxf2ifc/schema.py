@@ -19,6 +19,8 @@ ROOM = {"id": str, "name": str, "polygon": list, "area_m2": NUM,
         "area_printed_m2": (int, float, None), "confidence": NUM, "rule": str, "src": dict}
 COLUMN = {"id": str, "round": bool, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 EQUIPMENT = {"id": str, "kind": str, "name": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
+CURVED_WALL = {"id": str, "center": list, "radius_m": NUM, "thickness_m": NUM, "start_deg": NUM, "end_deg": NUM,
+               "confidence": NUM, "rule": str, "src": dict}
 FIRE = {"id": str, "kind": str, "position": list, "confidence": NUM, "rule": str, "src": dict}
 STAIR = {"id": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 SLAB = {"outline": list, "thickness_m": NUM, "confidence": NUM, "rule": str}
@@ -119,6 +121,11 @@ def validate_plan(plan: dict) -> list[str]:
             _points(item["polygon"], 3, f"equipment[{i}].polygon", errors)
             if item.get("kind") not in config.EQUIPMENT:
                 errors.append(f"equipment[{i}].kind: unknown {item.get('kind')!r}")
+
+    for i, wall in enumerate(plan.get("curved_walls") or []):  # optional, like stairs
+        if _fields(wall, CURVED_WALL, f"curved_walls[{i}]", errors) and isinstance(wall.get("thickness_m"), NUM) \
+                and not 0 < wall["thickness_m"] < wall.get("radius_m", 0) * 2:
+            errors.append(f"curved_walls[{i}].thickness_m: must be positive and less than the diameter")
 
     for i, symbol in enumerate(plan.get("fire") or []):  # optional, like stairs
         _fields(symbol, FIRE, f"fire[{i}]", errors)

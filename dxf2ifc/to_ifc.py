@@ -218,6 +218,14 @@ class _Writer:
             self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"], stair["src"])
             stairs.append(product)
 
+        columns = []
+        for column in plan.get("columns", []):  # floor to ceiling: plans give no column heights
+            product = self.root("IfcColumn", f"Column {column['id']}" + (" (round)" if column["round"] else ""), *key(column))
+            self.place(product, elevation)
+            self.solid(product, column["polygon"], 0.0, height, column["confidence"])
+            self.trust(product, plan, column["id"], column["confidence"], column["rule"], column["src"])
+            columns.append(product)
+
         fire = []
         for symbol in plan.get("fire", []):  # a 30 cm box where the symbol is; the type is in ObjectType
             names = {"extinguisher": "Fire extinguisher", "detector": "Fire detector",
@@ -233,7 +241,7 @@ class _Writer:
             self.trust(product, plan, symbol["id"], symbol["confidence"], symbol["rule"], symbol["src"])
             fire.append(product)
 
-        contained = [product for product, _ in walls.values()] + fillings + [slab] + stairs + fire
+        contained = [product for product, _ in walls.values()] + fillings + [slab] + stairs + columns + fire
         api.spatial.assign_container(f, products=contained, relating_structure=storey)
         if spaces:
             api.aggregate.assign_object(f, products=spaces, relating_object=storey)

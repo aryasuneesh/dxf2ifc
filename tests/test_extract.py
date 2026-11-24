@@ -305,6 +305,21 @@ def test_no_stairs_in_plain_house(tmp_path):
     assert plan["stairs"] == []
 
 
+def test_columns_round_and_square(tmp_path):
+    def add_columns(msp):
+        for start in (0, 90, 180, 270):  # a round column drawn as four quarter arcs, as in SECO plans
+            msp.add_arc((3, 3), 0.175, start, start + 90, dxfattribs={"layer": "POTEAUX"})
+        msp.add_lwpolyline([(6, 2), (6.3, 2), (6.3, 2.3), (6, 2.3)], close=True, dxfattribs={"layer": "POTEAUX"})
+        msp.add_line((6, 2), (6.3, 2.3), dxfattribs={"layer": "POTEAUX"})  # hatch line inside it
+        msp.add_line((1, 1), (9, 1.01), dxfattribs={"layer": "POTEAUX"})  # a grid line, not a column
+    plan, _ = run(tmp_path, edit=add_columns)
+    columns = sorted(plan["columns"], key=lambda c: c["polygon"][0][0])
+    assert [c["round"] for c in columns] == [True, False]
+    assert Polygon(columns[0]["polygon"]).area == pytest.approx(3.1416 * 0.175 ** 2, rel=0.05)
+    assert Polygon(columns[1]["polygon"]).area == pytest.approx(0.09, rel=0.02)
+    assert any("2 columns are modelled" in f["reason"] for f in plan["flags"])
+
+
 def test_fire_symbols_from_blocks_and_clusters(tmp_path):
     def add_fire(msp):
         doc = msp.doc

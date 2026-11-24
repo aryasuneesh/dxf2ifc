@@ -736,6 +736,46 @@ def _fire_symbols(drawing, building, flags):
     return symbols
 
 
+# ---------------------------------------------------------------- columns
+
+def _columns(drawing, roles, flags, building):
+    """Columns: each small cluster of lines, arcs and hatches on a column layer is one column.
+    A cluster with arcs is round (centre and radius from the arcs), otherwise its smallest enclosing rectangle.
+    Only columns inside the building's extent count."""
+    x1, y1, x2, y2 = building
+    layers = {name for name, entry in roles["layers"].items() if entry["role"] == "column"}
+    pieces = [(LineString([(s.x1, s.y1), (s.x2, s.y2)]), s) for s in drawing.segments if s.layer in layers]
+    pieces += [(Point(a.cx, a.cy).buffer(a.r, 16), a) for a in drawing.arcs if a.layer in layers]
+    pieces += [(Polygon(f.polygon), f) for f in drawing.fills if f.layer in layers and len(f.polygon) >= 3]
+    pieces = [(shape, item) for shape, item in pieces if shape.is_valid and not shape.is_empty]
+    if not pieces:
+        return []
+    merged = unary_union([shape.buffer(config.COLUMN_REACH) for shape, _ in pieces])
+    columns = []
+    for cluster in getattr(merged, "geoms", [merged]):
+        parts = [(shape, item) for shape, item in pieces if cluster.contains(shape.representative_point())]
+        arcs = [item for _, item in parts if hasattr(item, "r")]
+        if arcs:
+            cx, cy = statistics.mean(a.cx for a in arcs), statistics.mean(a.cy for a in arcs)
+            outline, size = Point(cx, cy).buffer(max(a.r for a in arcs), 4), 2 * max(a.r for a in arcs)
+        else:
+            outline = unary_union([shape for shape, _ in parts]).minimum_rotated_rectangle
+            a1, b1, a2, b2 = outline.bounds
+            size = max(a2 - a1, b2 - b1)
+        centre = outline.centroid
+        if not (config.COLUMN_MIN <= size <= config.COLUMN_MAX and x1 <= centre.x <= x2 and y1 <= centre.y <= y2):
+            continue
+        columns.append({"id": f"c{len(columns) + 1}", "round": bool(arcs),
+                        "polygon": [[round(x, 3), round(y, 3)] for x, y in list(outline.exterior.coords)[:-1]],
+                        "confidence": config.CONF_COLUMN, "rule": "column_layer",
+                        "src": {"layer": parts[0][1].layer, "handles": list(dict.fromkeys(item.handle for _, item in parts))}})
+    if columns:
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"{len(columns)} columns are modelled from the column layer, full storey height; "
+                                "check their size and that none is missing"})
+    return columns
+
+
 # ---------------------------------------------------------------- storey, slab
 
 def _storey(drawing, elevation, height, used_labels, flags):
@@ -893,12 +933,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
         corners = np.array([p for w in walls for p in w.corners()])
         building = (*corners.min(axis=0), *corners.max(axis=0))
         stairs, fire = _stairs(drawing, roles, flags, building), _fire_symbols(drawing, building, flags)
+        columns = _columns(drawing, roles, flags, building)
     else:
-        stairs, fire = [], []
-    role_of = {entry["role"] for entry in roles["layers"].values()}
-    for missing in sorted(role_of & {"column"}):
-        flags.append({"element_id": "file", "severity": "info",
-                      "reason": f"{missing} layers exist but {missing}s are not modelled"})
+        stairs, fire, columns = [], [], []
 
     plan = {
         "schema_version": 1,
@@ -906,7 +943,7 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                    "scale_to_m": drawing.scale_to_m, "origin_offset": list(drawing.origin_offset), "family": family},
         "storey": storey, "walls": plan_walls, "openings": plan_openings,
         "rooms": [{"id": r["id"], **{k: v for k, v in r.items() if k != "id"}} for r in rooms],
-        "slab": slab, "stairs": stairs, "fire": fire, "flags": flags,
+        "slab": slab, "stairs": stairs, "columns": columns, "fire": fire, "flags": flags,
         "stats": {"wall_layer_length_m": round(sum(s.length for s, _ in candidates), 2),
                   "wall_explained_length_m": round(explained, 2),
                   "labels_total": len(drawing.labels),

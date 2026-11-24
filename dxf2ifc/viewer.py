@@ -19,7 +19,7 @@ import ifcopenshell.util.element as element
 from . import config
 
 KINDS = {"IfcWall": "walls", "IfcWallStandardCase": "walls", "IfcDoor": "openings", "IfcWindow": "openings",
-         "IfcSpace": "rooms", "IfcSlab": "slabs", "IfcRoof": "slabs", "IfcStair": "stairs",
+         "IfcSpace": "rooms", "IfcSlab": "slabs", "IfcRoof": "slabs", "IfcStair": "stairs", "IfcColumn": "columns",
          "IfcSensor": "extras", "IfcDistributionControlElement": "extras", "IfcFireSuppressionTerminal": "extras",
          "IfcAlarm": "extras", "IfcFlowTerminal": "extras", "IfcBuildingElementProxy": "fire safety",
          "IfcOpeningElement": "gaps"}  # a gap in a wall with no door: drawn as a see-through box

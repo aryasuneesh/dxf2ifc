@@ -17,6 +17,7 @@ OPENING = {"id": str, "kind": str, "wall_id": str, "center": list, "width_m": NU
            "confidence": NUM, "rule": str, "src": dict}
 ROOM = {"id": str, "name": str, "polygon": list, "area_m2": NUM,
         "area_printed_m2": (int, float, None), "confidence": NUM, "rule": str, "src": dict}
+COLUMN = {"id": str, "round": bool, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 FIRE = {"id": str, "kind": str, "position": list, "confidence": NUM, "rule": str, "src": dict}
 STAIR = {"id": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 SLAB = {"outline": list, "thickness_m": NUM, "confidence": NUM, "rule": str}
@@ -107,6 +108,10 @@ def validate_plan(plan: dict) -> list[str]:
     for i, stair in enumerate(plan.get("stairs") or []):  # optional: plans from before 19 Nov have none
         if _fields(stair, STAIR, f"stairs[{i}]", errors) and "polygon" in stair:
             _points(stair["polygon"], 3, f"stairs[{i}].polygon", errors)
+
+    for i, column in enumerate(plan.get("columns") or []):  # optional, like stairs
+        if _fields(column, COLUMN, f"columns[{i}]", errors) and "polygon" in column:
+            _points(column["polygon"], 3, f"columns[{i}].polygon", errors)
 
     for i, symbol in enumerate(plan.get("fire") or []):  # optional, like stairs
         _fields(symbol, FIRE, f"fire[{i}]", errors)

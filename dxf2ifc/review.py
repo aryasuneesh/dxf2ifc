@@ -26,7 +26,7 @@ from . import config
 from .schema import level
 
 HEX = {name: "#%02x%02x%02x" % tuple(round(c * 255) for c in rgb) for name, rgb in config.CONFIDENCE_COLOURS.items()}
-NOT_MODELLED = ["Curved walls", "Columns and beams", "Ramps", "Roofs", "Furniture and equipment",
+NOT_MODELLED = ["Curved walls", "Beams", "Ramps", "Roofs", "Furniture and equipment",
                 "Anything shown only on sections or elevations (true heights, level changes)"]
 
 
@@ -169,7 +169,7 @@ def review_list(plan) -> list[dict]:
 
 # Drawing-wide flags that are about every element of a type: the 3D view asks about them on those elements.
 TYPE_FLAGS = (("stairs are modelled", "IfcStair"), ("fire-safety symbols", "IfcBuildingElementProxy"),
-              ("door height is a default", "IfcDoor"), ("window sill", "IfcWindow"))
+              ("door height is a default", "IfcDoor"), ("columns are modelled", "IfcColumn"), ("window sill", "IfcWindow"))
 
 
 def viewer_notes(plan, ifc_path) -> tuple[dict, list]:

@@ -116,6 +116,11 @@ STAIR_U_WIDTH = 1.8  # m, an outline at least this wide holds two flights side b
 STAIR_WAIST = 0.2  # m, concrete under each step
 MAX_TREAD_CANDIDATES = 50_000  # above this the tread search is skipped
 
+# columns: closed outlines, circles and hatches on column layers
+COLUMN_REACH = 0.05  # m, pieces this close are one column (outline, hatch, the quarter arcs of a circle)
+COLUMN_MIN, COLUMN_MAX = 0.1, 1.5  # m, side or diameter; outside this it is a grid line, a label or a wall
+CONF_COLUMN = 0.7  # outline from a column layer; full storey height assumed
+
 # fire-safety symbols (kickoff "welcome extra"): blocks or small clusters on fire layers
 FIRE_LAYER = (r"incendi|fire|brandm|brandschutz|feuerl|l[öo]sch|extinct|extingu|(^|[^a-z])ria($|[^a-z])|baes|"
               r"pictogramme|rauchmelder|sprinkl")

@@ -780,7 +780,7 @@ def _beams(drawing, roles, flags):
     lines = [(s, config.CONF_BEAM) for s in drawing.segments if s.layer in layers and s.length >= config.MIN_WALL_SEG]
     beams = [{"id": f"b{i + 1}", "axis": [[round(v, 3) for v in p] for p in piece.axis], "width_m": round(piece.t, 3),
               "confidence": round(piece.conf, 2), "rule": "beam_layer_pair", "src": {"layer": piece.layer, "handles": piece.handles}}
-             for i, piece in enumerate(p for p in _pair_walls(lines) if p.rule == "parallel_pair")]
+             for i, piece in enumerate(p for p in _pair_walls(lines) if p.rule == "parallel_pair" and p.t >= config.BEAM_MIN_WIDTH)]
     if beams:
         flags.append({"element_id": "file", "severity": "review",
                       "reason": f"{len(beams)} beams are modelled from the beam layer, {config.BEAM_DEPTH:.2f} m deep "

@@ -130,6 +130,7 @@ WALL_MATERIAL_BY_THICKNESS = [(0.125, "Plasterboard (assumed)"), (0.21, "Masonry
 
 # beams: pairs of parallel lines on a beam layer, hung under the ceiling
 BEAM_DEPTH = 0.4  # m, plans do not show it
+BEAM_MIN_WIDTH = 0.12  # m, closer line pairs are the two strokes of one dashed edge, not a beam
 CONF_BEAM = 0.5
 
 # balconies: rooms with one of these names get a railing where no wall bounds them

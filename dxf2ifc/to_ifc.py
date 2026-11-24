@@ -239,6 +239,27 @@ class _Writer:
             self.trust(space, plan, room["id"], room["confidence"], room["rule"], room["src"], room["area_printed_m2"])
             spaces.append(space)
 
+        for beam in plan.get("beams", []):  # under the ceiling, assumed depth
+            product = self.root("IfcBeam", f"Beam {round(beam['width_m'] * 1000)} mm", *key(beam))
+            self.place(product, elevation)
+            self.solid(product, _strip(beam["axis"], beam["width_m"]), height - config.BEAM_DEPTH, config.BEAM_DEPTH, beam["confidence"])
+            self.trust(product, plan, beam["id"], beam["confidence"], beam["rule"], beam["src"])
+            fillings.append(product)
+
+        balcony = re.compile(config.BALCONY_NAMES, re.IGNORECASE)
+        for room, space in zip(plan["rooms"], spaces):
+            ceiling = self.root("IfcCovering", f"Ceiling {room['id']}", "ceiling", *key(room), predefined_type="CEILING")
+            self.place(ceiling, elevation)
+            self.solid(ceiling, room["polygon"], height - config.CEILING_T, config.CEILING_T, config.CONF_CEILING)
+            self.trust(ceiling, plan, room["id"] + "-ceiling", config.CONF_CEILING, "assumed_ceiling")
+            fillings.append(ceiling)
+            if balcony.search(room["name"]) and (edges := _open_edges(room["polygon"], plan["walls"])):
+                railing = self.root("IfcRailing", f"Railing {room['name']}", "railing", *key(room), predefined_type="BALUSTRADE")
+                self.place(railing, elevation)
+                self.body_of(railing, [part for edge in edges for part in _railing(edge)], config.CONF_RAILING)
+                self.trust(railing, plan, room["id"] + "-railing", config.CONF_RAILING, "assumed_balustrade", room["src"])
+                fillings.append(railing)
+
         slab_info = plan["slab"]
         slab = self.root("IfcSlab", "Floor slab", "slab", tag, predefined_type="FLOOR")
         self.place(slab, elevation)
@@ -306,7 +327,10 @@ class _Writer:
         else:
             roof.PredefinedType = "FLAT_ROOF"
         self.place(roof, info["elevation_m"] + info["height_m"])
-        self.solid(roof, plan["slab"]["outline"], 0.0, config.DEFAULT_SLAB_THICKNESS, config.CONF_ROOF)
+        outline = plan["slab"]["outline"]
+        parapet = [(_strip([outline[i], outline[(i + 1) % len(outline)]], config.PARAPET_T), config.DEFAULT_SLAB_THICKNESS,
+                    config.PARAPET_HEIGHT) for i in range(len(outline))]
+        self.body_of(roof, [(outline, 0.0, config.DEFAULT_SLAB_THICKNESS)] + parapet, config.CONF_ROOF)
         self.trust(roof, plan, "roof", config.CONF_ROOF, "assumed_flat_roof")
         api.spatial.assign_container(self.f, products=[roof], relating_structure=self.storeys[-1])
 
@@ -357,6 +381,27 @@ def _ring(wall):
     outer = [(cx + (r + half) * math.cos(a), cy + (r + half) * math.sin(a)) for a in angles]
     inner = [(cx + (r - half) * math.cos(a), cy + (r - half) * math.sin(a)) for a in angles[::-1]]
     return outer + inner
+
+
+def _open_edges(polygon, walls):
+    """Parts of a room's edges with no wall along them (at least 30 cm long): where a balcony needs a railing."""
+    from shapely.geometry import LineString, Polygon
+    from shapely.ops import unary_union
+
+    near = unary_union([Polygon(_strip(w["axis"], w["thickness_m"])) for w in walls]).buffer(config.WALL_NEAR)
+    free = LineString(list(polygon) + [polygon[0]]).difference(near)
+    return [list(line.coords) for line in getattr(free, "geoms", [free]) if not line.is_empty and line.length >= 0.3]
+
+
+def _railing(points):
+    """A glass balustrade along a polyline: a top rail and a pane under it, piece by piece."""
+    parts = []
+    for a, b in zip(points, points[1:]):
+        if math.dist(a, b) < 0.01:
+            continue
+        parts.append((_strip([a, b], 0.05), config.RAILING_HEIGHT - 0.05, 0.05))
+        parts.append((_strip([a, b], 0.02), 0.1, config.RAILING_HEIGHT - 0.15, "glass"))
+    return parts
 
 
 def _frame(span):

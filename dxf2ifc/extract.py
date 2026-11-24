@@ -772,6 +772,22 @@ def _fire_symbols(drawing, building, flags):
     return symbols
 
 
+# ---------------------------------------------------------------- beams
+
+def _beams(drawing, roles, flags):
+    """Beams: pairs of parallel lines on a beam layer, found like walls. Their depth is assumed."""
+    layers = {name for name, entry in roles["layers"].items() if entry["role"] == "beam"}
+    lines = [(s, config.CONF_BEAM) for s in drawing.segments if s.layer in layers and s.length >= config.MIN_WALL_SEG]
+    beams = [{"id": f"b{i + 1}", "axis": [[round(v, 3) for v in p] for p in piece.axis], "width_m": round(piece.t, 3),
+              "confidence": round(piece.conf, 2), "rule": "beam_layer_pair", "src": {"layer": piece.layer, "handles": piece.handles}}
+             for i, piece in enumerate(p for p in _pair_walls(lines) if p.rule == "parallel_pair")]
+    if beams:
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": f"{len(beams)} beams are modelled from the beam layer, {config.BEAM_DEPTH:.2f} m deep "
+                                "under the ceiling (assumed): check their depth"})
+    return beams
+
+
 # ---------------------------------------------------------------- curved walls
 
 def _curved_walls(drawing, roles):
@@ -1051,7 +1067,7 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
         equipment = _equipment(drawing, building, flags)
     else:
         stairs, fire, columns, equipment = [], [], [], []
-    curved = _curved_walls(drawing, roles)
+    curved, beams = _curved_walls(drawing, roles), _beams(drawing, roles, flags)
     if curved:
         flags.append({"element_id": "file", "severity": "review",
                       "reason": f"{len(curved)} curved walls are modelled from paired arcs; they have no openings and "
@@ -1061,7 +1077,7 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
         "schema_version": 1,
         "source": {"file": Path(drawing.path).name, "project": drawing.project, "units_in": drawing.units_in,
                    "scale_to_m": drawing.scale_to_m, "origin_offset": list(drawing.origin_offset), "family": family},
-        "storey": storey, "walls": plan_walls, "curved_walls": curved, "openings": plan_openings,
+        "storey": storey, "walls": plan_walls, "curved_walls": curved, "beams": beams, "openings": plan_openings,
         "rooms": [{"id": r["id"], **{k: v for k, v in r.items() if k != "id"}} for r in rooms],
         "slab": slab, "stairs": stairs, "columns": columns, "equipment": equipment, "fire": fire, "flags": flags,
         "stats": {"wall_layer_length_m": round(sum(s.length for s, _ in candidates), 2),

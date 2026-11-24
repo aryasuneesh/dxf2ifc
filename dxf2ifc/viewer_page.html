@@ -86,7 +86,7 @@ Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
 <script>__THREE__</script>
 <script>
 const DATA = __DATA__, SETUP = __SETUP__, COLOURS = SETUP.colours, NOTES = SETUP.notes, $ = id => document.getElementById(id);
-const TYPE_COLOURS = {walls: "#cfc8bd", openings: "#8d6e63", rooms: "#9cc9f0", slabs: "#b9bcc2", stairs: "#a1887f", columns: "#78909c", railings: "#546e7a", furniture: "#bcaaa4", fittings: "#eceff1", "fire safety": "#7e57c2", gaps: "#ff7043"};
+const TYPE_COLOURS = {walls: "#cfc8bd", openings: "#8d6e63", rooms: "#9cc9f0", slabs: "#b9bcc2", stairs: "#a1887f", columns: "#78909c", railings: "#546e7a", beams: "#8d99ae", ceilings: "#f5f5f5", furniture: "#bcaaa4", fittings: "#eceff1", "fire safety": "#7e57c2", gaps: "#ff7043"};
 const WINDOW_COLOUR = "#5aa9e6", esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 // ---------------------------------------------------------------- scene
@@ -119,10 +119,11 @@ for (const item of DATA) {
   }
   (groups[item.kind] ||= new THREE.Group()).add(mesh); box.expandByObject(mesh);
 }
+const HIDDEN = new Set(["ceilings"]);  // ceilings would cover the rooms seen from above: off until asked for
 for (const [kind, group] of Object.entries(groups)) {
-  scene.add(group);
+  scene.add(group); group.visible = !HIDDEN.has(kind);
   const label = document.createElement("label");
-  label.innerHTML = `<input type="checkbox" checked> ${kind} (${group.children.length})`;
+  label.innerHTML = `<input type="checkbox"${group.visible ? " checked" : ""}> ${kind} (${group.children.length})`;
   label.firstChild.onchange = e => { group.visible = e.target.checked; };
   $("layers").appendChild(label);
 }

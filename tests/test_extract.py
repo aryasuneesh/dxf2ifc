@@ -345,6 +345,15 @@ def test_curved_wall_from_two_concentric_arcs(tmp_path):
     assert (wall["start_deg"], wall["end_deg"]) == (10, 80)  # only where both arcs run
 
 
+def test_beam_from_two_lines_on_a_beam_layer(tmp_path):
+    def add_beam(msp):
+        msp.add_line((0.5, 3), (9.5, 3), dxfattribs={"layer": "POUTRE"})
+        msp.add_line((0.5, 3.25), (9.5, 3.25), dxfattribs={"layer": "POUTRE"})
+    plan, _ = run(tmp_path, edit=add_beam)
+    [beam] = plan["beams"]
+    assert beam["width_m"] == pytest.approx(0.25)
+
+
 def test_fence_posts_are_not_columns():
     from dxf2ifc.roles import rule_role
     assert rule_role("P501_CLOTURE-POTEAU") is None and rule_role("10 POTEAUX") == "column"

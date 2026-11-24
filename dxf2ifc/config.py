@@ -32,7 +32,7 @@ _ROOT = _Path(__file__).resolve().parent.parent
 MAPPINGS_DIR = _ROOT / "mappings"  # confirmed layer mappings, one JSON per layer set
 CACHE_DIR = _ROOT / ".cache"
 
-ROLES = ("wall", "door", "window", "column", "stair", "text", "dimension", "hatch",
+ROLES = ("wall", "door", "window", "column", "beam", "stair", "text", "dimension", "hatch",
          "furniture", "grid", "annotation", "other")
 _B, _E = r"(^|[^a-z])", r"($|[^a-z])"  # not inside a longer word (MUR yes, MURET and ARMURE no)
 # First match wins: "HATCH MUR" is hatching, "MUR PORTEUR" is a wall before PORTE makes it a door.
@@ -42,6 +42,7 @@ ROLE_PATTERNS = [
     ("door", rf"{_B}portes?{_E}|ouvrant|t(ü|ue)r|door"),
     ("window", r"fen[eê]tre|ch[aâ]ssis|vitrage|fenster|window|glaz"),
     ("column", rf"^(?!.*(cl[oô]ture|fence|zaun)).*(poteau|pilier|st(ü|ue)tze|column|{_B}cols{_E})"),  # not fence posts
+    ("beam", rf"poutre|unterzug|{_B}beams?{_E}"),
     ("stair", rf"escalier|treppe|stair|{_B}strs{_E}"),
     ("dimension", rf"{_B}cot(e|es|ation|ations)?{_E}|{_B}dim|bema(ss|ß)|ma(ss|ß)(kette|linie)"),
     ("text", rf"text|annot|beschrift|label|{_B}txt"),
@@ -112,6 +113,7 @@ TREAD_MIN_COUNT = 6  # fewer parallel treads are not a stair
 FLIGHT_JOIN = 0.6  # m, flights and landings this close are one stair
 FLIGHT_MIN_AREA = 1.5  # m2, a smaller run of treads is a pattern, not a stair
 CONF_RAILING = 0.4  # no plan draws a balustrade's height or kind
+CONF_CEILING = 0.5  # a flat ceiling under the slab above, assumed in every room
 CONF_STAIR_LAYER, CONF_STAIR_TREADS = 0.6, 0.5  # outline found; steps and direction are assumed
 STAIR_RISE = 0.175  # m, target riser height of the assumed steps
 STAIR_U_WIDTH = 1.8  # m, an outline at least this wide holds two flights side by side (U stair, half landing)
@@ -125,6 +127,17 @@ WALL_MATERIAL_WORDS = [("Concrete", r"b[ée]ton|beton|concrete"), ("Brick", r"br
                        ("Plasterboard", r"placo|pl[âa]tre|gyps|gips|plaster|trockenbau"),
                        ("Timber", r"(^|[^a-z])bois|holz|timber|wood"), ("Masonry", r"ma[cç]onnerie|mauerwerk|masonry|parpaing|bloc")]
 WALL_MATERIAL_BY_THICKNESS = [(0.125, "Plasterboard (assumed)"), (0.21, "Masonry (assumed)"), (99, "Concrete (assumed)")]
+
+# beams: pairs of parallel lines on a beam layer, hung under the ceiling
+BEAM_DEPTH = 0.4  # m, plans do not show it
+CONF_BEAM = 0.5
+
+# balconies: rooms with one of these names get a railing where no wall bounds them
+BALCONY_NAMES = r"balcon|loggia|terrasse|balkon|balcony|terrace"
+RAILING_HEIGHT = 1.0  # m, the usual minimum for a balcony
+WALL_NEAR = 0.3  # m, a room edge this close to a wall is bounded by it
+PARAPET_HEIGHT, PARAPET_T = 0.5, 0.2  # m, low wall round an assumed flat roof
+CEILING_T = 0.015  # m, a plasterboard ceiling under the slab above
 
 # curved walls: two concentric arcs on a wall layer, a wall thickness apart
 CURVED_R_MIN = 0.8  # m, smaller arcs are door swings and fillets

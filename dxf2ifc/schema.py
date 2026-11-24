@@ -21,6 +21,7 @@ COLUMN = {"id": str, "round": bool, "polygon": list, "confidence": NUM, "rule": 
 EQUIPMENT = {"id": str, "kind": str, "name": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 CURVED_WALL = {"id": str, "center": list, "radius_m": NUM, "thickness_m": NUM, "start_deg": NUM, "end_deg": NUM,
                "confidence": NUM, "rule": str, "src": dict}
+BEAM = {"id": str, "axis": list, "width_m": NUM, "confidence": NUM, "rule": str, "src": dict}
 FIRE = {"id": str, "kind": str, "position": list, "confidence": NUM, "rule": str, "src": dict}
 STAIR = {"id": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 SLAB = {"outline": list, "thickness_m": NUM, "confidence": NUM, "rule": str}
@@ -121,6 +122,10 @@ def validate_plan(plan: dict) -> list[str]:
             _points(item["polygon"], 3, f"equipment[{i}].polygon", errors)
             if item.get("kind") not in config.EQUIPMENT:
                 errors.append(f"equipment[{i}].kind: unknown {item.get('kind')!r}")
+
+    for i, beam in enumerate(plan.get("beams") or []):  # optional, like stairs
+        if _fields(beam, BEAM, f"beams[{i}]", errors) and "axis" in beam:
+            _points(beam["axis"], 2, f"beams[{i}].axis", errors)
 
     for i, wall in enumerate(plan.get("curved_walls") or []):  # optional, like stairs
         if _fields(wall, CURVED_WALL, f"curved_walls[{i}]", errors) and isinstance(wall.get("thickness_m"), NUM) \

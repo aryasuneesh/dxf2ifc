@@ -92,7 +92,7 @@ def test_tc32_rooms(model):
 def test_tc33_every_element_carries_trust(model):
     ifc, _ = model
     products = [p for p in ifc.by_type("IfcProduct") if not p.is_a("IfcSite") and not p.is_a("IfcBuilding")]
-    assert len(products) == 1 + 5 + 2 + 2 + 2 + 1  # storey, walls, openings, doors, spaces, slab
+    assert len(products) == 1 + 5 + 2 + 2 + 2 + 1 + 2  # storey, walls, openings, doors, spaces, slab, ceilings
     for product in products:
         props = trust(product)
         assert 0 <= props["Confidence"] <= 1, product
@@ -108,7 +108,7 @@ def test_elements_are_coloured_by_confidence(model):
     assert len(ifc.by_type("IfcSurfaceStyle")) == 7  # three levels, solid and see-through, and glass
     doors = ifc.by_type("IfcDoor")
     assert all(len(d.Representation.Representations[0].Items) == 5 for d in doors)  # two jambs, head, leaf, handle
-    assert len(ifc.by_type("IfcStyledItem")) == 5 + 2 * 5 + 2 + 1  # walls, door parts, spaces, slab
+    assert len(ifc.by_type("IfcStyledItem")) == 5 + 2 * 5 + 2 + 1 + 2  # walls, door parts, spaces, slab, ceilings
 
 
 def test_tc34_same_input_gives_same_ids(tmp_path):
@@ -244,3 +244,20 @@ def test_walls_have_a_type_and_material_layer(model):
         layers = element.get_material(wall_type).MaterialLayers
         assert len(layers) == 1 and layers[0].LayerThickness == pytest.approx(float(wall.Name.split()[1]) / 1000)
         assert "(assumed)" in layers[0].Material.Name  # the fixture's layer name says nothing about material
+
+
+def test_beams_balcony_railing_and_roof_parapet(tmp_path):
+    plan = copy.deepcopy(FIXTURE)
+    plan["beams"] = [{"id": "b1", "axis": [[0, 3], [10, 3]], "width_m": 0.25, "confidence": 0.5,
+                      "rule": "beam_layer_pair", "src": {"layer": "POUTRE", "handles": ["B9"]}}]
+    xs = [x for x, _ in plan["slab"]["outline"]]
+    balcony = {**copy.deepcopy(plan["rooms"][0]), "id": "r9", "name": "Balcon",
+               "polygon": [[min(xs), -2], [min(xs) + 3, -2], [min(xs) + 3, 0], [min(xs), 0]], "area_m2": 6.0, "area_printed_m2": None}
+    plan["rooms"].append(balcony)
+    assert write_ifc([plan], tmp_path / "m.ifc", roof=True) == []
+    ifc = ifcopenshell.open(str(tmp_path / "m.ifc"))
+    assert len(ifc.by_type("IfcBeam")) == 1 and len(ifc.by_type("IfcCovering")) == 3
+    [railing] = ifc.by_type("IfcRailing")
+    assert railing.Name == "Railing Balcon"  # three open sides; the side on the house wall has none
+    roof_items = ifc.by_type("IfcRoof")[0].Representation.Representations[0].Items
+    assert len(roof_items) == 1 + len(plan["slab"]["outline"])  # slab and one parapet piece per edge

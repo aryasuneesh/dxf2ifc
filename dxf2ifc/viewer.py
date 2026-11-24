@@ -19,7 +19,7 @@ import ifcopenshell.util.element as element
 from . import config
 
 KINDS = {"IfcWall": "walls", "IfcWallStandardCase": "walls", "IfcDoor": "openings", "IfcWindow": "openings",
-         "IfcSpace": "rooms", "IfcSlab": "slabs", "IfcRoof": "slabs", "IfcStair": "stairs", "IfcColumn": "columns", "IfcRailing": "railings",
+         "IfcSpace": "rooms", "IfcSlab": "slabs", "IfcRoof": "slabs", "IfcStair": "stairs", "IfcColumn": "columns", "IfcRailing": "railings", "IfcBeam": "beams", "IfcCovering": "ceilings",
          "IfcFurniture": "furniture", "IfcFurnishingElement": "furniture", "IfcSanitaryTerminal": "fittings",
          "IfcFlowTerminal": "fittings", "IfcElectricAppliance": "fittings", "IfcSpaceHeater": "fittings",
          "IfcTransportElement": "furniture",

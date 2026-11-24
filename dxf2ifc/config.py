@@ -124,6 +124,29 @@ COLUMN_REACH = 0.05  # m, pieces this close are one column (outline, hatch, the 
 COLUMN_MIN, COLUMN_MAX = 0.1, 1.5  # m, side or diameter; outside this it is a grid line, a label or a wall
 CONF_COLUMN = 0.7  # outline from a column layer; full storey height assumed
 
+# furniture, sanitary fittings, appliances and heaters: blocks named after what they are (FR, DE, EN)
+# kind: (block name pattern, bottom m, top m). First match wins; heights are typical, not from the drawing.
+EQUIPMENT = {
+    "toilet": (r"(^|[^a-z])wc|toilet|klosett|cuvette", 0.0, 0.42),
+    "bath": (r"baignoire|badewanne|bathtub", 0.0, 0.55),
+    "shower": (r"douche|dusche|shower", 0.0, 0.05),
+    "basin": (r"lavabo|vasque|waschtisch|waschbecken|waschtrog|[ée]vier|sp[üu]le|(^|[^a-z])sink", 0.0, 0.88),
+    "washer": (r"machine [àa] laver|lave.?linge|lave.?vaisselle|waschmaschine|geschirrsp|washing|dishwasher", 0.0, 0.85),
+    "dryer": (r"s[èe]che.?linge|trockner|dryer", 0.0, 0.85),
+    "fridge": (r"frigo|r[ée]frig[ée]rateur|k[üu]hlschrank|fridge", 0.0, 1.8),
+    "cooker": (r"cuisini[èe]re|plaque de cuisson|herd|cooker|hob", 0.0, 0.9),
+    "heater": (r"radiateur|convecteur|heizk[öo]rper|radiator", 0.15, 0.75),
+    "wardrobe": (r"armoire|penderie|placard|kleiderschrank|schrank|wardrobe|meuble haut|biblioth[èe]que|[ée]tag[èe]re|regal|shelf", 0.0, 2.0),
+    "bed": (r"(^|[^a-z])lits?($|[^a-z])|(^|[^a-z])bett|(^|[^a-z])bed($|[^a-z])", 0.0, 0.5),
+    "sofa": (r"canap[ée]|sofa|couch", 0.0, 0.8),
+    "table": (r"(^|[^a-z])tables?($|[^a-z])|(^|[^a-z])tisch|(^|[^a-z])desk|(^|[^a-z])bureau($|[^a-z])", 0.0, 0.75),
+    "chair": (r"chaise|fauteuil|stuhl|sessel|chair", 0.0, 0.85),
+    "kitchen": (r"cuisine|k[üu]che|kitchen|meuble bas|plan de travail", 0.0, 0.9),
+    "lift": (r"ascenseur|aufzug|(^|[^a-z])lift|elevator", 0.0, 2.2),
+}
+EQUIPMENT_SIZE = (0.2, 4.0)  # m, longer side of a block's footprint; outside this the block is something else
+CONF_EQUIPMENT = 0.6  # the block name says what it is; the height is typical
+
 # fire-safety symbols (kickoff "welcome extra"): blocks or small clusters on fire layers
 FIRE_LAYER = (r"incendi|fire|brandm|brandschutz|feuerl|l[öo]sch|extinct|extingu|(^|[^a-z])ria($|[^a-z])|baes|"
               r"pictogramme|rauchmelder|sprinkl")

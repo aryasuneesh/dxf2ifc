@@ -320,6 +320,21 @@ def test_columns_round_and_square(tmp_path):
     assert any("2 columns are modelled" in f["reason"] for f in plan["flags"])
 
 
+def test_furniture_and_fittings_from_block_names(tmp_path):
+    def add_blocks(msp):
+        doc = msp.doc
+        wc = doc.blocks.new("WC 18")
+        wc.add_lwpolyline([(0, 0), (0.4, 0), (0.4, 0.65), (0, 0.65)], close=True)
+        logo = doc.blocks.new("Cartouche")  # not furniture: ignored
+        logo.add_line((0, 0), (1, 0))
+        msp.add_blockref("WC 18", (2, 2), dxfattribs={"layer": "SANITAIRE"})
+        msp.add_blockref("Cartouche", (3, 3), dxfattribs={"layer": "0"})
+    plan, _ = run(tmp_path, edit=add_blocks)
+    [wc] = plan["equipment"]
+    assert wc["kind"] == "toilet" and wc["name"] == "WC"
+    assert Polygon(wc["polygon"]).area == pytest.approx(0.26, rel=0.02)
+
+
 def test_fence_posts_are_not_columns():
     from dxf2ifc.roles import rule_role
     assert rule_role("P501_CLOTURE-POTEAU") is None and rule_role("10 POTEAUX") == "column"

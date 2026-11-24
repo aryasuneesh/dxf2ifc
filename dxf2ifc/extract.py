@@ -769,6 +769,51 @@ def _fire_symbols(drawing, building, flags):
     return symbols
 
 
+# ---------------------------------------------------------------- furniture and fittings
+
+EQUIPMENT_RES = [(kind, re.compile(pattern, re.IGNORECASE)) for kind, (pattern, *_) in config.EQUIPMENT.items()]
+
+
+def _equipment(drawing, building, flags):
+    """Furniture, sanitary fittings, appliances and heaters: each block named after one of config.EQUIPMENT,
+    with the footprint of the lines it draws. Only blocks inside the building's extent count."""
+    x1, y1, x2, y2 = building
+    lines = defaultdict(list)
+    for seg in drawing.segments:
+        if seg.block:
+            lines[seg.handle].append(seg)
+    for arc in drawing.arcs:
+        if arc.block:
+            lines[arc.handle].append(arc)
+    found = []
+    for ref in drawing.blockrefs:
+        kind = next((k for k, pattern in EQUIPMENT_RES if pattern.search(ref.name)), None)
+        parts = lines.get(ref.handle)
+        if not kind or not parts or not (x1 <= ref.x <= x2 and y1 <= ref.y <= y2):
+            continue
+        shapes = [Point(p.cx, p.cy).buffer(p.r, 4) if hasattr(p, "r") else LineString([(p.x1, p.y1), (p.x2, p.y2)])
+                  for p in parts]
+        outline = unary_union(shapes).minimum_rotated_rectangle
+        if outline.geom_type != "Polygon":
+            continue
+        a, b = (math.dist(*list(outline.exterior.coords)[i:i + 2]) for i in (0, 1))
+        if not config.EQUIPMENT_SIZE[0] <= max(a, b) <= config.EQUIPMENT_SIZE[1] or min(a, b) < 0.05:
+            continue
+        found.append({"kind": kind, "name": re.sub(r"\s+\d+(_\d+)?$", "", ref.name).strip(),
+                      "polygon": [[round(x, 3), round(y, 3)] for x, y in list(outline.exterior.coords)[:-1]],
+                      "confidence": config.CONF_EQUIPMENT, "rule": "block_name",
+                      "src": {"layer": ref.layer, "handles": [ref.handle]}})
+    found.sort(key=lambda e: tuple(e["polygon"][0]))
+    for i, item in enumerate(found):
+        item["id"] = f"e{i + 1}"
+    if found:
+        counts = Counter(e["kind"] for e in found)
+        flags.append({"element_id": "file", "severity": "review",
+                      "reason": "furniture and fittings are placed from their block names, heights assumed: "
+                                + ", ".join(f"{n} {kind}" for kind, n in sorted(counts.items()))})
+    return found
+
+
 # ---------------------------------------------------------------- columns
 
 def _columns(drawing, roles, flags, building):
@@ -967,8 +1012,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
         building = (*corners.min(axis=0), *corners.max(axis=0))
         stairs, fire = _stairs(drawing, roles, flags, building), _fire_symbols(drawing, building, flags)
         columns = _columns(drawing, roles, flags, building)
+        equipment = _equipment(drawing, building, flags)
     else:
-        stairs, fire, columns = [], [], []
+        stairs, fire, columns, equipment = [], [], [], []
 
     plan = {
         "schema_version": 1,
@@ -976,7 +1022,7 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                    "scale_to_m": drawing.scale_to_m, "origin_offset": list(drawing.origin_offset), "family": family},
         "storey": storey, "walls": plan_walls, "openings": plan_openings,
         "rooms": [{"id": r["id"], **{k: v for k, v in r.items() if k != "id"}} for r in rooms],
-        "slab": slab, "stairs": stairs, "columns": columns, "fire": fire, "flags": flags,
+        "slab": slab, "stairs": stairs, "columns": columns, "equipment": equipment, "fire": fire, "flags": flags,
         "stats": {"wall_layer_length_m": round(sum(s.length for s, _ in candidates), 2),
                   "wall_explained_length_m": round(explained, 2),
                   "labels_total": len(drawing.labels),

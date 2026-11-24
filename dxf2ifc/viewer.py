@@ -20,8 +20,11 @@ from . import config
 
 KINDS = {"IfcWall": "walls", "IfcWallStandardCase": "walls", "IfcDoor": "openings", "IfcWindow": "openings",
          "IfcSpace": "rooms", "IfcSlab": "slabs", "IfcRoof": "slabs", "IfcStair": "stairs", "IfcColumn": "columns", "IfcRailing": "railings",
+         "IfcFurniture": "furniture", "IfcFurnishingElement": "furniture", "IfcSanitaryTerminal": "fittings",
+         "IfcFlowTerminal": "fittings", "IfcElectricAppliance": "fittings", "IfcSpaceHeater": "fittings",
+         "IfcTransportElement": "furniture",
          "IfcSensor": "extras", "IfcDistributionControlElement": "extras", "IfcFireSuppressionTerminal": "extras",
-         "IfcAlarm": "extras", "IfcFlowTerminal": "extras", "IfcBuildingElementProxy": "fire safety",
+         "IfcAlarm": "extras", "IfcBuildingElementProxy": "fire safety",
          "IfcOpeningElement": "gaps"}  # a gap in a wall with no door: drawn as a see-through box
 
 

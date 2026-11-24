@@ -26,7 +26,7 @@ from . import config
 from .schema import level
 
 HEX = {name: "#%02x%02x%02x" % tuple(round(c * 255) for c in rgb) for name, rgb in config.CONFIDENCE_COLOURS.items()}
-NOT_MODELLED = ["Curved walls", "Beams", "Ramps", "Roofs", "Furniture and equipment",
+NOT_MODELLED = ["Curved walls", "Beams", "Ramps", "Roofs", "Furniture not drawn as a named block",
                 "Anything shown only on sections or elevations (true heights, level changes)"]
 
 
@@ -169,7 +169,8 @@ def review_list(plan) -> list[dict]:
 
 # Drawing-wide flags that are about every element of a type: the 3D view asks about them on those elements.
 TYPE_FLAGS = (("stairs are modelled", "IfcStair"), ("fire-safety symbols", "IfcBuildingElementProxy"),
-              ("door height is a default", "IfcDoor"), ("columns are modelled", "IfcColumn"), ("window sill", "IfcWindow"))
+              ("door height is a default", "IfcDoor"), ("columns are modelled", "IfcColumn"),
+              ("furniture and fittings are placed", ("IfcFurnishingElement", "IfcFlowTerminal", "IfcTransportElement")), ("window sill", "IfcWindow"))
 
 
 def viewer_notes(plan, ifc_path) -> tuple[dict, list]:
@@ -186,7 +187,7 @@ def viewer_notes(plan, ifc_path) -> tuple[dict, list]:
         if eid in ("storey", "slab") or (eid == "file" and "drawn as a single line" in reason):
             continue  # storey and slab values: one question below; single-line walls are asked wall by wall
         if kind:
-            for product in model.by_type(kind):
+            for product in (p for k in (kind if isinstance(kind, tuple) else (kind,)) for p in model.by_type(k)):
                 add(product.GlobalId, reason)
         elif eid in ids:
             add(ids[eid], reason)

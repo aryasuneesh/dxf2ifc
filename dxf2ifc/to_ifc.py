@@ -238,6 +238,17 @@ class _Writer:
             self.trust(product, plan, column["id"], column["confidence"], column["rule"], column["src"])
             columns.append(product)
 
+        for item in plan.get("equipment", []):  # a box of the block's footprint, typical height
+            ifc_class, predefined = _EQUIPMENT_CLASS[item["kind"]][self.old]
+            product = self.root(ifc_class, item["name"], *key(item), predefined_type=predefined)
+            if ifc_class in ("IfcBuildingElementProxy", "IfcFlowTerminal", "IfcFurnishingElement"):
+                product.ObjectType = item["kind"]
+            _, bottom, top = config.EQUIPMENT[item["kind"]]
+            self.place(product, elevation)
+            self.solid(product, item["polygon"], bottom, top - bottom, item["confidence"])
+            self.trust(product, plan, item["id"], item["confidence"], item["rule"], item["src"])
+            columns.append(product)
+
         fire = []
         for symbol in plan.get("fire", []):  # a 30 cm box where the symbol is; the type is in ObjectType
             names = {"extinguisher": "Fire extinguisher", "detector": "Fire detector",
@@ -293,6 +304,21 @@ def _strip(axis, thickness):
     length = math.hypot(x2 - x1, y2 - y1)
     nx, ny = -(y2 - y1) / length * thickness / 2, (x2 - x1) / length * thickness / 2
     return [(x1 + nx, y1 + ny), (x2 + nx, y2 + ny), (x2 - nx, y2 - ny), (x1 - nx, y1 - ny)]
+
+
+_SANITARY = lambda kind: (("IfcSanitaryTerminal", kind), ("IfcFlowTerminal", None))
+_APPLIANCE = lambda kind: (("IfcElectricAppliance", kind), ("IfcFlowTerminal", None))
+_FURNITURE = lambda kind: (("IfcFurniture", kind), ("IfcFurnishingElement", None))
+# kind -> ((IFC4 class, predefined type), (IFC2X3 class, None)): IFC2X3 has neither the classes nor the types
+_EQUIPMENT_CLASS = {
+    "toilet": _SANITARY("TOILETPAN"), "bath": _SANITARY("BATH"), "shower": _SANITARY("SHOWER"),
+    "basin": _SANITARY("WASHHANDBASIN"), "washer": _APPLIANCE("WASHINGMACHINE"), "dryer": _APPLIANCE("TUMBLEDRYER"),
+    "fridge": _APPLIANCE("FRIDGE_FREEZER"), "cooker": _APPLIANCE("ELECTRICCOOKER"),
+    "heater": (("IfcSpaceHeater", "RADIATOR"), ("IfcFlowTerminal", None)),
+    "wardrobe": _FURNITURE("SHELF"), "bed": _FURNITURE("BED"), "sofa": _FURNITURE("SOFA"), "table": _FURNITURE("TABLE"),
+    "chair": _FURNITURE("CHAIR"), "kitchen": _FURNITURE("NOTDEFINED"),
+    "lift": (("IfcTransportElement", "ELEVATOR"), ("IfcTransportElement", None)),
+}
 
 
 def _frame(span):

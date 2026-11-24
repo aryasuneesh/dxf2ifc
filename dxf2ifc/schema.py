@@ -18,6 +18,7 @@ OPENING = {"id": str, "kind": str, "wall_id": str, "center": list, "width_m": NU
 ROOM = {"id": str, "name": str, "polygon": list, "area_m2": NUM,
         "area_printed_m2": (int, float, None), "confidence": NUM, "rule": str, "src": dict}
 COLUMN = {"id": str, "round": bool, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
+EQUIPMENT = {"id": str, "kind": str, "name": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 FIRE = {"id": str, "kind": str, "position": list, "confidence": NUM, "rule": str, "src": dict}
 STAIR = {"id": str, "polygon": list, "confidence": NUM, "rule": str, "src": dict}
 SLAB = {"outline": list, "thickness_m": NUM, "confidence": NUM, "rule": str}
@@ -112,6 +113,12 @@ def validate_plan(plan: dict) -> list[str]:
     for i, column in enumerate(plan.get("columns") or []):  # optional, like stairs
         if _fields(column, COLUMN, f"columns[{i}]", errors) and "polygon" in column:
             _points(column["polygon"], 3, f"columns[{i}].polygon", errors)
+
+    for i, item in enumerate(plan.get("equipment") or []):  # optional, like stairs
+        if _fields(item, EQUIPMENT, f"equipment[{i}]", errors) and "polygon" in item:
+            _points(item["polygon"], 3, f"equipment[{i}].polygon", errors)
+            if item.get("kind") not in config.EQUIPMENT:
+                errors.append(f"equipment[{i}].kind: unknown {item.get('kind')!r}")
 
     for i, symbol in enumerate(plan.get("fire") or []):  # optional, like stairs
         _fields(symbol, FIRE, f"fire[{i}]", errors)

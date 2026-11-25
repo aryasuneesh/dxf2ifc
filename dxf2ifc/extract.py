@@ -149,18 +149,45 @@ def _pair_walls(candidates):
     return pieces
 
 
-def _merge_walls(pieces):
-    """Join pieces on one line. A gap of door size becomes an opening and the wall runs through it."""
+def _chain(items, key, tol):
+    """Split items into runs whose sorted key values step by at most tol. Rounding instead would part
+    0.11499999 and 0.115 (the same wall) at the 0.115 boundary."""
+    runs = []
+    for item in sorted(items, key=key):
+        if runs and key(item) - key(runs[-1][-1]) <= tol:
+            runs[-1].append(item)
+        else:
+            runs.append([item])
+    return runs
+
+
+def _bridged(wall, lo, hi, glazing):
+    """A window-layer line runs along the wall over the middle of this gap: glazing wider than a door gap."""
+    mid, reach = (lo + hi) / 2, wall.t / 2 + config.WINDOW_DIST
+    for s in glazing:
+        a = (s.x1 * wall.ux + s.y1 * wall.uy, s.x1 * -wall.uy + s.y1 * wall.ux)
+        b = (s.x2 * wall.ux + s.y2 * wall.uy, s.x2 * -wall.uy + s.y2 * wall.ux)
+        if (min(a[0], b[0]) <= mid <= max(a[0], b[0]) and abs(a[1] - b[1]) < 0.01
+                and abs(a[1] - wall.c) <= reach):
+            return True
+    return False
+
+
+def _merge_walls(pieces, glazing=()):
+    """Join pieces on one line. A gap of door size becomes an opening and the wall runs through it;
+    so does a wider gap (up to WINDOW_GAP_MAX) with window-layer lines along it."""
     groups = defaultdict(list)
     for w in pieces:
-        groups[(round(w.ux, 3), round(w.uy, 3), round(w.c, 2), round(w.t, 2), w.rule)].append(w)
+        groups[(round(w.ux, 3), round(w.uy, 3), w.rule)].append(w)
+    groups = [run for group in groups.values() for line in _chain(group, lambda w: w.c, 0.01)
+              for run in _chain(line, lambda w: w.t, 0.01)]
     walls, gaps = [], []
-    for group in groups.values():
+    for group in groups:
         group.sort(key=lambda w: w.lo)
         current, weight = group[0], group[0].hi - group[0].lo
         for nxt in group[1:]:
             gap = nxt.lo - current.hi
-            if gap <= config.GAP_MAX:
+            if gap <= config.GAP_MAX or (gap <= config.WINDOW_GAP_MAX and _bridged(current, current.hi, nxt.lo, glazing)):
                 if gap >= config.GAP_MIN:
                     gaps.append((current, (current.hi + nxt.lo) / 2, gap))
                 elif gap > config.MERGE_GAP:  # too small for a door, too big to ignore
@@ -332,7 +359,7 @@ def _host_wall(walls, hinge, end):
     return best
 
 
-def _place_swings(swings, walls, gaps, drawing):
+def _place_swings(swings, walls, gaps, drawing, wall_layers=()):
     """Turn each door swing into an opening in a wall, unless a gap already stands for that door.
 
     The host wall is stretched across the door, so a doorway drawn without a break still closes
@@ -349,6 +376,19 @@ def _place_swings(swings, walls, gaps, drawing):
         b_e = np.hypot(lines[:, 2] - end[0], lines[:, 3] - end[1]) < tol
         return bool((a_h & b_e | b_h & a_e).any())
 
+    jambs = np.array([(seg.x1, seg.y1, seg.x2, seg.y2) for seg in drawing.segments
+                      if seg.layer in wall_layers]).reshape(-1, 4)
+
+    def in_line(hinge, end):  # ends of the doorway with a wall line carrying on beyond them, in line with the leaf
+        r = math.dist(hinge, end)
+        vx, vy = (end[0] - hinge[0]) / r, (end[1] - hinge[1]) / r
+        along = lambda x, y: (x - hinge[0]) * vx + (y - hinge[1]) * vy
+        across = lambda x, y: np.abs(-(x - hinge[0]) * vy + (y - hinge[1]) * vx)
+        a1, a2 = along(jambs[:, 0], jambs[:, 1]), along(jambs[:, 2], jambs[:, 3])
+        lo, hi = np.minimum(a1, a2), np.maximum(a1, a2)
+        flat = (across(jambs[:, 0], jambs[:, 1]) < tol) & (across(jambs[:, 2], jambs[:, 3]) < tol) & (hi - lo > tol)
+        return int((flat & (np.abs(hi) < tol)).any()) + int((flat & (np.abs(lo - r) < tol)).any())
+
     wall_gaps = list(gaps)  # only gaps found in the walls can absorb a swing
     unplaced = 0
     for swing in swings:
@@ -364,6 +404,10 @@ def _place_swings(swings, walls, gaps, drawing):
                 closed = 1 if leaves[0] else 0
             elif hosts[0] and hosts[1]:
                 closed = 0 if hosts[0][0] <= hosts[1][0] else 1
+            else:  # no wall and both or no leaves drawn: the closed door lies in line with the wall ends around it
+                ends = [in_line(hinge, end) for end in swing["ends"]]
+                if ends[0] != ends[1]:
+                    closed = 0 if ends[0] > ends[1] else 1
 
         # a gap in the wall at this spot already is this door (one gap can hold both leaves of a double door)
         side = None if closed is None else {"hinge": [round(v, 3) for v in hinge],
@@ -500,7 +544,7 @@ def _room_seeds(drawing, used_labels):
         if area is None:
             continue
         used_labels.add(id(label))
-        own_name = AREA_RE.sub("", label.text).strip(" -:/")
+        own_name = re.sub(r"\(\s*\)", "", AREA_RE.sub("", label.text)).strip(" -:/")
         if re.search(r"[A-Za-zÀ-ü]{2}", own_name):  # "BUREAU 1 32.2 m2" in one text
             seeds.append({"name": own_name, "area": area, "at": _center(label), "labels": [label]})
             continue
@@ -538,10 +582,14 @@ def _rooms(walls, seeds, used_labels, flags, barriers=()):
     for w in walls:
         pts = np.round((np.array(w.corners()) - (x0, y0)) / px * sub - sub / 2).astype(np.int32)
         cv2.fillPoly(image, [pts], 255, shift=4)
-    for seg in barriers:  # window lines close the facade where glazing is wider than a door gap
+    for seg in barriers:  # window and wall-face lines
         a = np.round((np.array([[seg.x1, seg.y1], [seg.x2, seg.y2]]) - (x0, y0)) / px * sub - sub / 2).astype(np.int32)
         cv2.line(image, tuple(a[0]), tuple(a[1]), 255, 1, shift=4)
 
+    # close holes narrower than any doorway: where walls of different thickness meet end to end, a stub drawn
+    # only as an outline leaves a slit rooms leak through. A square kernel keeps right-angled room corners.
+    k = max(1, int(config.GAP_MIN * 0.8 / px))
+    image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, np.ones((k, k), np.uint8))
     count, labels, stats, _ = cv2.connectedComponentsWithStats((image == 0).astype(np.uint8), connectivity=4)
     outside = set(np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))) - {0}
 
@@ -593,6 +641,8 @@ def _rooms(walls, seeds, used_labels, flags, barriers=()):
         # the wall raster covers every pixel it touches: give back half a pixel along the outline
         area += 0.5 * cv2.arcLength(max(contours, key=cv2.contourArea), True) * px * px
 
+        if len(found) > 1:  # "APP. 1.1 109,52 m2": a total for the whole flat, not a room in this space
+            found = [s for s in found if not s["area"] or s["area"] <= config.SUMMARY_AREA * area] or found
         named = [s["name"] for s in found if s["name"]]
         printed = [s["area"] for s in found if s["area"]]
         if found:
@@ -893,7 +943,7 @@ def _columns(drawing, roles, flags, building):
             a1, b1, a2, b2 = outline.bounds
             size = max(a2 - a1, b2 - b1)
         centre = outline.centroid
-        if not (config.COLUMN_MIN <= size <= config.COLUMN_MAX and x1 <= centre.x <= x2 and y1 <= centre.y <= y2):
+        if outline.geom_type != "Polygon" or not (config.COLUMN_MIN <= size <= config.COLUMN_MAX and x1 <= centre.x <= x2 and y1 <= centre.y <= y2):
             continue
         columns.append({"id": f"c{len(columns) + 1}", "round": bool(arcs),
                         "polygon": [[round(x, 3), round(y, 3)] for x, y in list(outline.exterior.coords)[:-1]],
@@ -948,10 +998,19 @@ def _storey(drawing, elevation, height, used_labels, flags):
 def _slab(drawing, walls, rooms, flags):
     shapes = [Polygon(w.corners()) for w in walls] + [Polygon(r["polygon"]) for r in rooms]
     shapes = [s if s.is_valid else s.buffer(0) for s in shapes]
-    merged = (unary_union(shapes).buffer(config.SLAB_CLOSE, join_style=2).buffer(-config.SLAB_CLOSE, join_style=2)
-              if shapes else None)  # mitre joins keep the corners square
-    if merged is not None and not merged.is_empty:
-        largest = max(merged.geoms, key=lambda g: g.area) if hasattr(merged, "geoms") else merged
+    def closed(union, **joins):  # the largest piece once gaps up to 2 x SLAB_CLOSE are bridged
+        merged = union.buffer(config.SLAB_CLOSE, **joins).buffer(-config.SLAB_CLOSE, **joins)
+        return None if merged.is_empty else max(getattr(merged, "geoms", [merged]), key=lambda g: g.area)
+
+    largest = None
+    if shapes:
+        union = unary_union(shapes)
+        # mitre joins keep inner corners square, but on some outlines the inward pass cuts a wedge deep into
+        # the floor (N316 lost a third of it); round joins never do, at the cost of a fillet in inner corners
+        square, round_ = closed(union, join_style=2), closed(union)
+        largest = square if square is not None and round_ is not None and \
+            Polygon(square.exterior).area >= 0.97 * Polygon(round_.exterior).area else round_
+    if largest is not None:
         boundary = largest.exterior.simplify(0.02)
         rule = "default_thickness"
     else:  # nothing to outline: use the drawing's extent so the file is still valid
@@ -988,7 +1047,9 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
     if len(candidates) > config.MAX_WALL_CANDIDATES:  # pairing would take hours; no floor plan has this many
         raise ValueError(f"{Path(drawing.path).name}: {len(candidates)} lines on the wall layers; "
                          "this looks like hatching or a detail sheet, not a floor plan")
-    walls, gaps = _merge_walls(_pair_walls(candidates))
+    windows = {name for name, entry in roles["layers"].items() if entry["role"] == "window"}
+    glazing = [seg for seg in drawing.segments if seg.layer in windows]
+    walls, gaps = _merge_walls(_pair_walls(candidates), glazing)
     xs = [v for seg in drawing.segments for v in (seg.x1, seg.x2)] or [0.0]
     ys = [v for seg in drawing.segments for v in (seg.y1, seg.y2)] or [0.0]
     walls, dropped = _main_building(walls, (min(xs), min(ys), max(xs), max(ys)))
@@ -996,7 +1057,13 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
     gaps = [{"wall": wall, "along": along, "width": width, "origin": "gap", "symbols": []}
             for wall, along, width in gaps if id(wall) in kept]
     explained = sum((w.hi - w.lo) * (2 if w.rule == "parallel_pair" else 1) for w in walls)
-    unplaced = _place_swings(_door_swings(drawing), walls, gaps, drawing) if walls else 0
+    wall_layers = {name for name, entry in roles["layers"].items() if entry["role"] == "wall"}
+    swings = []
+    if walls:  # only swings on the main building: other drawings on the sheet must not grow it
+        corners = np.array([p for w in walls for p in w.corners()])
+        (x1, y1), (x2, y2) = corners.min(axis=0) - 1.0, corners.max(axis=0) + 1.0
+        swings = [s for s in _door_swings(drawing) if x1 <= s["hinge"][0] <= x2 and y1 <= s["hinge"][1] <= y2]
+    unplaced = _place_swings(swings, walls, gaps, drawing, wall_layers) if walls else 0
     if unplaced:
         flags.append({"element_id": "file", "severity": "review",
                       "reason": f"{unplaced} door swings could not be tied to a wall and were left out"})
@@ -1014,8 +1081,10 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
                                 f"single line; they were given a nominal thickness of {config.SINGLE_LINE_T:.2f} m"})
 
     openings = _classify_openings(gaps, drawing, roles, family, used_labels, flags)
-    windows = {name for name, entry in roles["layers"].items() if entry["role"] == "window"}
-    barriers = [seg for seg in drawing.segments if seg.layer in windows] if walls else []
+    # window lines close the facade; on a layered drawing the wall faces themselves bound rooms too, also
+    # where short or broken outlines never paired into a wall
+    faces = [seg for seg in drawing.segments if seg.layer in wall_layers] if family == "layered" else []
+    barriers = glazing + faces if walls else []
     rooms = _rooms(walls, _room_seeds(drawing, used_labels), used_labels, flags, barriers)
     if walls and not rooms:
         flags.append({"element_id": "file", "severity": "review",

@@ -372,3 +372,44 @@ def test_fire_symbols_from_blocks_and_clusters(tmp_path):
     kinds = sorted((f["kind"], f["rule"]) for f in plan["fire"])
     assert kinds == [("detector", "fire_cluster"), ("extinguisher", "fire_block")]
     assert any("fire-safety symbols" in f["reason"] for f in plan["flags"])
+
+
+def test_walls_of_one_thickness_join_across_a_rounding_boundary():
+    from dxf2ifc.extract import _Wall, _merge_walls
+    # 0.11499999 and 0.115 rounded to two places part at 0.115; they are one wall with a door between
+    pieces = [_Wall(1, 0, 9.5068223, 7.24, 8.42, 0.11499999988, [], "w", 1.0),
+              _Wall(1, 0, 9.5068223, 9.30, 11.07, 0.11500000000, [], "w", 1.0)]
+    walls, gaps = _merge_walls(pieces)
+    assert len(walls) == 1 and len(gaps) == 1 and gaps[0][2] == pytest.approx(0.88)
+
+
+def test_wide_gap_is_a_window_only_with_window_lines_along_it():
+    from types import SimpleNamespace as NS
+    from dxf2ifc.extract import _Wall, _merge_walls
+    pieces = lambda: [_Wall(1, 0, 14.45, 2.7, 3.75, 0.175, [], "w", 1.0), _Wall(1, 0, 14.45, 6.25, 8.0, 0.175, [], "w", 1.0)]
+    walls, gaps = _merge_walls(pieces())
+    assert len(walls) == 2 and not gaps
+    sill = NS(x1=3.8, y1=14.6, x2=6.2, y2=14.6)  # glazing 2.5 m wide, wider than any door gap
+    walls, gaps = _merge_walls(pieces(), [sill])
+    assert len(walls) == 1 and gaps[0][2] == pytest.approx(2.5)
+
+
+def test_door_between_wall_stubs_is_closed_in_line_with_them():
+    from types import SimpleNamespace as NS
+    from dxf2ifc.extract import _place_swings
+    line = lambda a, b, layer: NS(x1=a[0], y1=a[1], x2=b[0], y2=b[1], layer=layer)
+    # leaf drawn open along x, frame drawn closed along y: both look like leaves; the wall stubs decide
+    drawing = NS(segments=[line((0, 0), (-0.9, 0), "PORTE"), line((0, 0), (0, 0.9), "PORTE"),
+                           line((0, -0.6), (0, 0), "MUR"), line((0, 0.95), (0, 1.5), "MUR"), line((0, 0), (0.24, 0), "MUR")])
+    swing = {"hinge": (0, 0), "ends": [(0, 0.9), (-0.9, 0)], "r": 0.9, "handle": "A"}
+    walls, gaps = [], []
+    assert _place_swings([swing], walls, gaps, drawing, {"MUR"}) == 0
+    assert gaps[0]["swing"]["into"] == [-0.9, 0] and (walls[0].ux, walls[0].uy) == (0, 1)
+
+
+def test_flat_total_does_not_name_a_room():
+    from dxf2ifc.extract import _rooms
+    seeds = [{"name": "SEJOUR", "area": 20.0, "at": (2, 2.5), "labels": []},
+             {"name": "APP. 1.1", "area": 109.5, "at": (3, 3), "labels": []}]
+    rooms = _rooms(_box(0, 0, 4, 5), seeds, set(), [])
+    assert rooms[0]["name"] == "SEJOUR" and rooms[0]["area_printed_m2"] == 20.0

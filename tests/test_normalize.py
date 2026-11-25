@@ -98,3 +98,22 @@ def test_not_a_dxf(tmp_path):
         load(bad)
     with pytest.raises(ValueError):
         load(tmp_path / "missing.dxf")
+
+
+def test_room_labels_side_by_side_stay_apart_and_centred_text_is_placed(tmp_path):
+    import ezdxf
+    from ezdxf.enums import TextEntityAlignment
+    from dxf2ifc import config
+    from dxf2ifc.normalize import group_labels, Label
+
+    words = [Label("CHAMBRE 3 (11,56 M2)", 0, 0, 0.17, 0, "T", ["a"]), Label("CHAMBRE 3 (11,56 M2)", 2.3, 0, 0.17, 0, "T", ["b"]),
+             Label("BUREAU", 10, 0, 0.25, 0, "T", ["c"]), Label("12 m2", 11.2, 0, 0.25, 0, "T", ["d"])]
+    assert [label.text for label in group_labels(words)] == ["CHAMBRE 3 (11,56 M2)", "CHAMBRE 3 (11,56 M2)", "BUREAU 12 m2"]
+
+    doc = ezdxf.new("R2018")
+    doc.modelspace().add_line((0, 0), (20, 15))
+    doc.modelspace().add_text("DEB. (1,78 M2)", height=0.2).set_placement((5, 5), align=TextEntityAlignment.MIDDLE_CENTER)
+    doc.saveas(tmp_path / "t.dxf")
+    label = load(tmp_path / "t.dxf").labels[0]
+    width = len(label.text) * config.CHAR_W_MIN * 0.2
+    assert (label.x, label.y) == pytest.approx((5 - width / 2, 4.9), abs=0.01)

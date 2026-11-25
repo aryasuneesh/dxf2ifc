@@ -5,6 +5,7 @@ After this step no other module needs to know which DXF family the file came fro
 
 import logging
 import math
+import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -188,7 +189,8 @@ class _Collector:
                 text, height = entity.dxf.get("text", ""), entity.dxf.get("height", 0.0)
             pos = entity.dxf.get("insert")
             if text.strip() and pos is not None:
-                d.labels.append(Label(text.strip(), pos.x, pos.y, height, entity.dxf.get("rotation", 0.0),
+                x, y = _lower_left(entity, kind, text.strip(), height)
+                d.labels.append(Label(text.strip(), x, y, height, entity.dxf.get("rotation", 0.0),
                                       raw_layer, [handle]))
 
         elif kind == "HATCH":
@@ -244,6 +246,30 @@ def _units(doc, larger_side, warnings):
     return name, scale
 
 
+def _lower_left(entity, kind, text, height):
+    """Lower-left corner of a text (labels are stored that way), from its alignment.
+    Centred or right-aligned TEXT is placed by its align point, MTEXT by its attachment point;
+    the width is estimated from the length, as in extract._center."""
+    width = len(text) * config.CHAR_W_MIN * height
+    if kind == "MTEXT":
+        x, y = entity.dxf.insert.x, entity.dxf.insert.y
+        point = entity.dxf.get("attachment_point", 1)  # 1-9: top/middle/bottom rows, left/centre/right
+        dx, dy = -width * ((point - 1) % 3) / 2, -height * (1 - ((point - 1) // 3) / 2)
+    else:
+        h, v = entity.dxf.get("halign", 0), entity.dxf.get("valign", 0)
+        anchor = entity.dxf.get("align_point")
+        if (h, v) == (0, 0) or h in (3, 5) or anchor is None:  # left, aligned, fit: the insert is the corner
+            return entity.dxf.insert.x, entity.dxf.insert.y
+        x, y = anchor.x, anchor.y
+        dx = {1: -width / 2, 2: -width, 4: -width / 2}.get(h, 0.0)
+        dy = -height / 2 if h == 4 else {2: -height / 2, 3: -height}.get(v, 0.0)
+    angle = math.radians(entity.dxf.get("rotation", 0.0))
+    return x + dx * math.cos(angle) - dy * math.sin(angle), y + dx * math.sin(angle) + dy * math.cos(angle)
+
+
+AREA_END = re.compile(r"\d\s*m\s?[2²]\W*$", re.IGNORECASE)
+
+
 def group_labels(labels: list[Label]) -> list[Label]:
     """Join words that the exporting program split into separate texts.
 
@@ -269,6 +295,7 @@ def group_labels(labels: list[Label]) -> list[Label]:
                     and abs(word.height - last.height) <= config.LABEL_HEIGHT_TOL * h
                     and abs(across - last_across) < config.LABEL_LINE_TOL * h
                     and word.layer == last.layer
+                    and not AREA_END.search(last.text)  # "CHAMBRE 3 (11,56 M2)" is complete: the next room's name is not part of it
                     and 0.5 * len(last.text) * config.CHAR_W_MIN * h <= step
                     <= (len(last.text) * config.CHAR_W_MAX + config.WORD_GAP) * h):
                 merged.text += " " + word.text

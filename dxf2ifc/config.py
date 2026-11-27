@@ -86,7 +86,7 @@ DEFAULT_WINDOW_SILL, DEFAULT_WINDOW_HEIGHT = 0.90, 1.20  # m, flagged when used
 ROOM_WORDS = (r"bureau|salle|wc|cuisine|chambre|couloir|hall|local|circulation|sanitaire|"
               r"nettoyage|archive|r[ée]union|stockage|d[ée]p[oô]t|s[ée]jour|"
               r"b[uü]ro|zimmer|k[uü]che|flur|lager|raum|office|room|kitchen|corridor|storage")
-STOREY_WORDS = (r"niveau|(^|[^a-z])niv\.?\s?[+\-]?\d|[ée]tage|(^|[^a-z])rdc($|[^a-z])|rez[- ]de|sous-sol|"
+STOREY_WORDS = (r"(^|[^a-z])niveau|(^|[^a-z])niv\.?\s?[+\-]?\d|[ée]tage|(^|[^a-z])rdc($|[^a-z])|rez[- ]de|sous-sol|"
                 r"erdgeschoss|obergeschoss|untergeschoss|(^|[^a-z])level\s")
 ROOM_NAME_DIST = 3.0  # a room name sits within this many text heights of its area
 RASTER_PX = 0.02  # m per pixel when filling rooms

@@ -4,6 +4,9 @@
 :root{color-scheme:light}
 html,body{margin:0;height:100%;font:15px/1.5 Segoe UI,Arial,sans-serif;background:#f4f5f7;color:#1c1c1c}
 #view{position:fixed;inset:0} #view canvas{display:block}
+#help{left:50%;top:50%;transform:translate(-50%,-50%);width:480px;max-width:calc(100vw - 24px);z-index:5}
+#help td{padding:1px 10px 1px 0;vertical-align:top} #help td:first-child{white-space:nowrap;font-weight:600}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1c1c1c;color:#fff;padding:6px 14px;border-radius:6px;z-index:6}
 .panel{position:fixed;background:#fff;border:1px solid #c9ccd1;border-radius:8px;padding:10px 14px;box-shadow:0 2px 10px #0002;box-sizing:border-box}
 #tools{top:12px;left:12px;width:290px;max-height:calc(55vh - 18px);overflow:auto}
 #mine{bottom:12px;left:12px;width:290px;max-height:calc(45vh - 18px);overflow:auto}
@@ -36,6 +39,21 @@ td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:
 </style>
 </head><body>
 <div id="view" role="img" aria-label="3D model of __TITLE__. Use the buttons in the panels to move the view and step through elements."></div>
+<div class="panel" id="help" hidden><b>Keys (as in Blender)</b> <span class="hint">press ? to close</span><table>
+<tr><td>Middle-drag / left-drag</td><td>turn</td></tr><tr><td>Shift + drag, right-drag</td><td>pan</td></tr>
+<tr><td>Wheel, + and -</td><td>zoom</td></tr>
+<tr><td>1 / 3 / 7 (numpad or top row)</td><td>front / right / top view</td></tr>
+<tr><td>Alt + 1 / 3 / 7</td><td>back / left / bottom view</td></tr>
+<tr><td>5</td><td>perspective or orthographic</td></tr><tr><td>9</td><td>view from the other side</td></tr>
+<tr><td>4 / 6 / 8 / 2</td><td>turn by 15 degrees</td></tr>
+<tr><td>Home or R</td><td>whole model</td></tr><tr><td>F or numpad .</td><td>frame the selected element</td></tr>
+<tr><td>H / Shift + H / Alt + H</td><td>hide selected / hide all others / show all again</td></tr>
+<tr><td>Alt + Z</td><td>X-ray: see through everything</td></tr>
+<tr><td>Alt + B</td><td>cut the model at 1.2 m, like the 2D plan; Page Up / Page Down move the cut</td></tr>
+<tr><td>M</td><td>measure: click two points</td></tr><tr><td>Esc</td><td>stop measuring, clear the measure</td></tr>
+<tr><td>N / P</td><td>next / previous question</td></tr></table></div>
+<div id="toast" hidden></div>
+
 
 <div id="tools" class="panel" role="region" aria-label="View controls">
 <h1>__TITLE__</h1><span class="badge">TO BE VERIFIED</span>
@@ -51,7 +69,7 @@ td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:
 <details><summary>Show or hide</summary><div id="layers"></div>
 <label><input type="checkbox" id="sensors"> simulated room sensors</label></details>
 <div class="hint">Drag to turn, scroll to zoom, right-drag to pan, click an element.
-Keys: arrows pan, + and - zoom, R whole model, N and P next and previous.</div>
+Keys: arrows pan, + and - zoom, R whole model, N and P next and previous. Press <b>?</b> for all keys (Blender-style views, hide, X-ray, section, measure).</div>
 </div>
 
 <div id="mine" class="panel" role="region" aria-label="Your feedback">
@@ -91,7 +109,7 @@ const WINDOW_COLOUR = "#5aa9e6", esc = s => String(s ?? "").replace(/[&<>"]/g, c
 
 // ---------------------------------------------------------------- scene
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf4f5f7);
-const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000);
+let camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000);
 camera.up.set(0, 0, 1);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
@@ -254,8 +272,9 @@ renderer.domElement.addEventListener("pointerdown", e => { down = [e.clientX, e.
 renderer.domElement.addEventListener("pointerup", e => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
   mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
-  const shown = meshes.filter(m => m.parent.visible);
+  const shown = meshes.filter(m => m.parent.visible && m.visible);
   const hit = ray.intersectObjects(shown).find(h => h.object.userData.kind !== "rooms") || ray.intersectObjects(shown)[0];
+  if (hit && measuring) return measureAt(hit.point);
   if (hit) select(hit.object.userData.id, false);
 });
 const label = d => { const n = d.long_name || d.name, t = d.type.replace("Ifc", ""); if (d.type === "IfcOpeningElement") return `Gap ${n.replace(/^Opening\s*/, "")}`.trim(); return n.toLowerCase().startsWith(t.toLowerCase()) ? n : `${t} ${n}`.trim(); };
@@ -355,7 +374,11 @@ function select(id, move = true, counter = "") {
 
 // ---------------------------------------------------------------- buttons and keys (everything works without a mouse)
 const fit = () => { controls.target.copy(centre); camera.position.copy(home); controls.update(); };
-const zoom = f => { camera.position.sub(controls.target).multiplyScalar(f).add(controls.target); controls.update(); };
+const zoom = f => {
+  if (camera.isOrthographicCamera) { camera.zoom /= f; camera.updateProjectionMatrix(); }
+  else camera.position.sub(controls.target).multiplyScalar(f).add(controls.target);
+  controls.update();
+};
 let step = -1;
 const inCheck = () => $("filter").value === "check";
 const currentList = () => { const want = $("filter").value; return inCheck() ? QUESTIONS
@@ -390,17 +413,103 @@ addEventListener("keydown", e => {
                n: () => stepThrough(1), N: () => stepThrough(1), p: () => stepThrough(-1), P: () => stepThrough(-1)}[e.key];
   if (act) { act(); e.preventDefault(); }
 });
+// ---------------------------------------------------------------- Blender-style navigation and tools
+controls.mouseButtons = {LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN};  // Shift + drag pans
+const persp = camera, Z = new THREE.Vector3(0, 0, 1);
+let toastTimer;
+function toast(text) { const t = $("toast"); t.textContent = text; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2500); }
+function useCamera(next) {
+  next.position.copy(camera.position); next.quaternion.copy(camera.quaternion); next.up.copy(Z);
+  camera = next; controls.object = next; controls.update();
+}
+function toggleOrtho() {
+  if (camera.isPerspectiveCamera) {
+    const h = camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    useCamera(new THREE.OrthographicCamera(-h * camera.aspect, h * camera.aspect, h, -h, -5000, 5000));
+  } else useCamera(persp);
+  toast(camera.isOrthographicCamera ? "Orthographic" : "Perspective");
+}
+function view(x, y, z, name) {  // look from direction (x, y, z) at the target, same distance
+  const d = camera.position.distanceTo(controls.target), dir = new THREE.Vector3(x, y || (z ? -1e-4 : 0), z).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d); controls.update(); toast(name);
+}
+function orbit(yaw, pitch) {
+  const off = camera.position.clone().sub(controls.target).applyAxisAngle(Z, yaw);
+  off.applyAxisAngle(new THREE.Vector3().crossVectors(Z, off).normalize(), pitch);
+  camera.position.copy(controls.target).add(off); controls.update();
+}
+function flip() { camera.position.sub(controls.target).negate().add(controls.target); controls.update(); }
+const hidden = new Set();
+function hide(ms) { ms.forEach(m => { m.visible = false; hidden.add(m); }); if (ms.includes(picked)) { picked = null; light([]); } }
+function showAll() { hidden.forEach(m => { m.visible = true; }); hidden.clear(); toast("Everything shown again"); }
+let xray = false;
+function toggleXray() {
+  xray = !xray;
+  for (const m of meshes) {
+    const mat = m.material, u = mat.userData;
+    if (u.opacity === undefined) Object.assign(u, {opacity: mat.opacity, transparent: mat.transparent, depthWrite: mat.depthWrite});
+    Object.assign(mat, xray ? {opacity: Math.min(u.opacity, 0.25), transparent: true, depthWrite: false} : u);
+    mat.needsUpdate = true;
+  }
+  toast(xray ? "X-ray on" : "X-ray off");
+}
+// Section: a horizontal cut through the model, 1.2 m above the lowest floor by default, like a 2D plan
+const floorZ = Math.min(...meshes.filter(m => m.userData.kind === "walls").map(m => new THREE.Box3().setFromObject(m).min.z), box.max.z);
+const cut = new THREE.Plane(new THREE.Vector3(0, 0, -1), floorZ + 1.2);
+function toggleCut() { renderer.clippingPlanes = renderer.clippingPlanes.length ? [] : [cut]; toast(renderer.clippingPlanes.length ? `Cut at ${(cut.constant - floorZ).toFixed(2)} m` : "Cut off"); }
+function moveCut(dz) { if (!renderer.clippingPlanes.length) toggleCut(); cut.constant += dz; toast(`Cut at ${(cut.constant - floorZ).toFixed(2)} m`); }
+// Measure: two clicks on the model, the distance and its parts along x, y and z
+let measuring = false, measurePts = [];
+const measureGroup = new THREE.Group(); scene.add(measureGroup);
+function clearMeasure() { measureGroup.clear(); measurePts = []; }
+function measureAt(p) {
+  if (measurePts.length === 2) clearMeasure();
+  measurePts.push(p.clone());
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({color: 0xd81b60, depthTest: false}));
+  dot.position.copy(p); dot.renderOrder = 9; measureGroup.add(dot);
+  if (measurePts.length < 2) return toast("Measure: click the second point");
+  const [a, b] = measurePts, line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]),
+    new THREE.LineBasicMaterial({color: 0xd81b60, depthTest: false}));
+  line.renderOrder = 9; measureGroup.add(line);
+  const d = b.clone().sub(a), text = `${d.length().toFixed(2)} m (x ${Math.abs(d.x).toFixed(2)}, y ${Math.abs(d.y).toFixed(2)}, z ${Math.abs(d.z).toFixed(2)})`;
+  $("toast").textContent = text; $("toast").hidden = false; clearTimeout(toastTimer);
+}
+addEventListener("keydown", e => {
+  if (e.target.closest("input,select,textarea") || e.ctrlKey || e.metaKey) return;
+  const digit = (e.code.match(/^(?:Numpad|Digit)(\d)$/) || [])[1], alt = e.altKey, k = e.key;
+  const act = digit === "1" ? () => alt ? view(0, 1, 0, "Back") : view(0, -1, 0, "Front")
+    : digit === "3" ? () => alt ? view(-1, 0, 0, "Left") : view(1, 0, 0, "Right")
+    : digit === "7" ? () => alt ? view(0, 0, -1, "Bottom") : view(0, 0, 1, "Top")
+    : digit === "5" ? toggleOrtho : digit === "9" ? flip
+    : digit === "4" ? () => orbit(-Math.PI / 12, 0) : digit === "6" ? () => orbit(Math.PI / 12, 0)
+    : digit === "8" ? () => orbit(0, -Math.PI / 12) : digit === "2" ? () => orbit(0, Math.PI / 12)
+    : digit === "0" || k === "Home" ? fit
+    : (k === "f" || k === "F" || e.code === "NumpadDecimal") ? () => picked ? frame([picked]) : fit()
+    : (e.code === "KeyH" && alt) ? showAll
+    : (e.code === "KeyH" && e.shiftKey) ? () => { if (picked) { hide(meshes.filter(m => m !== picked && m.visible)); toast("Only the selected element; Alt + H shows all"); } }
+    : e.code === "KeyH" ? () => { if (picked) { hide([picked]); toast("Hidden; Alt + H shows all"); } }
+    : (e.code === "KeyZ" && alt) ? toggleXray
+    : (e.code === "KeyB" && alt) ? toggleCut
+    : k === "PageUp" ? () => moveCut(0.25) : k === "PageDown" ? () => moveCut(-0.25)
+    : e.code === "KeyM" ? () => { measuring = !measuring; if (!measuring) clearMeasure(); toast(measuring ? "Measure: click the first point" : "Measure off"); }
+    : k === "Escape" ? () => { measuring = false; clearMeasure(); $("toast").hidden = true; $("help").hidden = true; }
+    : k === "?" ? () => { $("help").hidden = !$("help").hidden; } : null;
+  if (act) { act(); e.preventDefault(); }
+});
 const plan = $("planimg");
 if (plan) plan.onclick = () => $("planbox").classList.toggle("big"); else $("planbox").hidden = true;
-window.viewer = { select, meshes, camera, controls, THREE };  // for scripted views and screenshots
+window.viewer = { select, meshes, camera, controls, THREE, view };  // for scripted views and screenshots
 const fromHash = () => location.hash.length > 1 && select(decodeURIComponent(location.hash.slice(1)));
 addEventListener("hashchange", fromHash); fromHash();
-addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+addEventListener("resize", () => {
+  persp.aspect = innerWidth / innerHeight; persp.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+  if (camera.isOrthographicCamera) { const h = camera.top; camera.left = -h * persp.aspect; camera.right = h * persp.aspect; camera.updateProjectionMatrix(); }
+});
 // The selected element blinks in bright yellow about once a second (well under 3 flashes a second, safe
 // for photosensitive viewers); with "reduce motion" set in the system it stays lit instead.
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 renderer.setAnimationLoop(t => {
-  for (const sp of names.children) sp.visible = sp.userData.room.parent.visible;
+  for (const sp of names.children) sp.visible = sp.userData.room.parent.visible && sp.userData.room.visible;
   const k = still.matches ? 0.8 : 0.45 + 0.45 * Math.sin(t / 160);
   for (const m of lit) m.material.emissive.setRGB(k, 0.85 * k, 0);
   renderer.render(scene, camera);

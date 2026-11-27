@@ -33,68 +33,8 @@ table{border-collapse:collapse;width:100%} td{border-bottom:1px solid #ddd;paddi
 td:first-child{white-space:nowrap;font-weight:600}</style>"""
 
 
-def offline_page(names) -> bytes:
-    """START HERE page of the zip sent by email: what to do, and every answer we need from the engineer."""
-    e = html.escape
-    core = 2  # the first plans matter most; the rest are optional extras
-    plans = "".join(f"<li><a href='{e(n)}/viewer.html'><b>{e(n)}</b></a>{' (optional)' if i >= core else ''}</li>"
-                    for i, n in enumerate(names)) or "<li>No plans yet.</li>"
-    time = (f"about 10 minutes per plan. Please do the first {core}; the other {len(names) - core} are optional, "
-            "if you have time." if len(names) > core else f"about 10 minutes per plan, {len(names)} plan{'s' if len(names) != 1 else ''}.")
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>DXF to IFC: user test</title>{STYLE}</head><body>
-<h1>From a 2D plan to a model you can check</h1>
-<p>A program turned each floor plan below (a DXF drawing) into a 3D building model (IFC). Where the drawing did not say
-enough, the program made a guess. We would like you, as an engineer, to tell us whether those guesses are right.</p>
-<p><b>Time:</b> {time}</p>
-
-<div class="box"><b>Before you start</b><ol>
-<li><b>Unzip the whole folder</b> (right-click the zip, Extract all). Files opened from inside the zip do not work.</li>
-<li>Open the plans in <b>Chrome or Edge</b>. Other browsers work too, but cannot save your answers to a file by themselves.</li>
-<li>No internet needed. Nothing is sent anywhere: your answers stay on your computer until you email them.</li></ol></div>
-
-<h2>Plans</h2><ol>{plans}</ol>
-
-<h2>What you will see</h2><ul>
-<li>The 3D model in the middle. Drag to turn it, scroll to zoom, right-drag to move.</li>
-<li>The original 2D plan in the top right corner. Click it to make it larger; the triangle folds it away.</li>
-<li>Colours are added by the program, not taken from the drawing: <b>green</b> it is probably right, <b>orange</b> worth a look,
-<b>red</b> check this. A switch on the left colours the model by element type instead.</li>
-<li>The questions in the bottom right corner. The elements a question is about <b>blink yellow</b>. A gap in a wall
-with no door is shown as a see-through orange box.</li></ul>
-
-<h2>What we need from you</h2>
-<table>
-<tr><td>1. The questions<br><span>about 8 per plan</span></td><td>Press <b>Next</b>. Each question covers all elements
-with the same doubt, for example "37 walls drawn as a single line". Answer <b>Correct</b>, <b>Wrong</b> or <b>Not sure</b>.
-The next question follows by itself.<br>If you answer Wrong, please type in the comment box what is wrong and what it should be;
-the page then waits for you.<br>If one element of a group is different from the rest, click it in the model and answer for that
-one alone.</td></tr>
-<tr><td>2. Not in the model</td><td>The last question lists things the program found on the drawing but could not place,
-such as a door tag with no door. Tell us if it is acceptable to add these by hand.</td></tr>
-<tr><td>3. Overall questions<br><span>2 minutes</span></td><td>After the last question they open on the left:
-your role, how useful this is compared with redrawing the plan by hand (1 to 5), what you would not trust, what we should
-change first, and any other remarks. Your name is optional.</td></tr>
-<tr><td>4. Send the files</td><td>Email the feedback files (one per plan, named <b>feedback-&lt;plan&gt;.json</b>) to the
-person who sent you this folder.</td></tr></table>
-
-<h2>Where your answers are saved</h2><ul>
-<li><b>Chrome and Edge:</b> on your first answer the browser asks where to save the feedback file. Choose a folder you will
-find again, such as Desktop. Every answer is written to that file at once; the bottom right panel shows the file name and the time
-of the last save.</li>
-<li><b>Other browsers:</b> answers are kept in the browser. Press <b>Download feedback</b> at the end; the file goes to your
-Downloads folder.</li>
-<li>You can close a plan and come back later: your answers are still there. If the browser asks again to allow saving, click
-Allow.</li></ul>
-
-<p><span>Each plan folder also holds <b>model.ifc</b>, the model itself, if you want to open it in your own BIM software.</span></p>
-</body></html>""".encode("utf-8")
-
-
-def index_page(names, offline=False) -> bytes:
-    """Start page of the website: each plan opens side by side. offline=True gives the emailed zip's page instead."""
-    if offline:
-        return offline_page(names)
+def index_page(names) -> bytes:
+    """Start page of the website: each plan opens side by side."""
     e = html.escape
     rows = "".join(f"<li><a href='{e(n)}/compare.html'>{e(n)}</a> <span>(<a href='{e(n)}/review.html'>review page only</a> · "
                    f"<a href='{e(n)}/viewer.html'>3D only</a>)</span></li>" for n in names)
@@ -161,22 +101,67 @@ def make_app(root, password=None):
 
 def pack(plan_dirs, zip_path, offline=False) -> list[str]:
     """Zip converted plans (pages and IFC files; no plan.json, no DXF).
-    Default: for hosting, with this file as the website. offline=True: to email, with a start page instead."""
+    Default: for hosting, with this file as the website. offline=True: the whole prototype to email: START HERE is
+    the tool's home page with these plans, and start.bat runs the converter itself (upload your own DXF)."""
     folders = [Path(f) for f in plan_dirs]
     for folder in folders:
         if not (folder / "viewer.html").is_file():
             raise ValueError(f"{folder} has no viewer.html; run the plan first")
-    top, files = ("dxf2ifc user test", ("viewer.html", "model.ifc")) if offline else ("site/plans", FILES)
+    top = "dxf2ifc prototype"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        if offline:
-            archive.writestr(f"{top}/START HERE.html", index_page([f.name for f in folders], offline=True))
-        else:
+        if not offline:
             archive.write(__file__, "site/share.py")
+            for folder in folders:
+                for name in FILES:
+                    if (folder / name).is_file():
+                        archive.write(folder / name, f"site/plans/{folder.name}/{name}")
+            return [f.name for f in folders]
+        from .cli import PAGE, run_card
+        cards = [dict(card, id=folder.name) for folder in folders if (card := run_card(folder))]
+        data = json.dumps(cards, ensure_ascii=False).replace("</", "<\\/")  # no early end of the script tag
+        page = PAGE.replace("const STATIC = null;", f"const STATIC = {data};")
+        archive.writestr(f"{top}/START HERE.html", page.replace("__ROOT__", "app\\out\\web"))
+        archive.writestr(f"{top}/start.bat", START_BAT)
         for folder in folders:
-            for name in files:
+            for name in (*FILES, "plan.png"):
                 if (folder / name).is_file():
-                    archive.write(folder / name, f"{top}/{folder.name}/{name}")
+                    archive.write(folder / name, f"{top}/plans/{folder.name}/{name}")
+        package = Path(__file__).parent  # the converter, as in the repository; no data, no keys
+        for path in sorted(package.rglob("*")):
+            if path.is_file() and "__pycache__" not in path.parts:
+                archive.write(path, f"{top}/app/dxf2ifc/{path.relative_to(package).as_posix()}")
+        for name in ("requirements.txt", "README.md", "LICENSE"):
+            if (package.parent / name).is_file():
+                archive.write(package.parent / name, f"{top}/app/{name}")
     return [f.name for f in folders]
+
+
+# Runs the converter from the emailed folder: makes its own Python environment once, then opens the home page.
+START_BAT = r"""@echo off
+title DXF to IFC
+cd /d "%~dp0app"
+set PY=
+where py >nul 2>nul && set PY=py -3
+if not defined PY (where python >nul 2>nul && set PY=python)
+if not defined PY (
+  echo Python 3.10 or newer is needed. Install it from https://www.python.org/downloads/ then run start.bat again.
+  pause & exit /b 1
+)
+if not exist .venv\Scripts\python.exe (
+  echo First start: installing the converter. This takes a few minutes and needs internet.
+  %PY% -m venv .venv || goto failed
+  .venv\Scripts\python -m pip install --disable-pip-version-check -q -r requirements.txt || goto failed
+)
+echo The home page opens in your browser. Close this window to stop the converter.
+start "" /b cmd /c "timeout /t 4 /nobreak >nul & start http://127.0.0.1:8000/"
+.venv\Scripts\python -m dxf2ifc serve --port 8000
+pause
+exit /b 0
+:failed
+echo Installing failed. Check the internet connection and that Python is 3.10 or newer, then run start.bat again.
+pause
+exit /b 1
+""".replace("\n", "\r\n")
 
 
 def serve(root, port=8000, password=None, host="127.0.0.1"):

@@ -2,7 +2,7 @@
 <title>DXF to IFC</title>
 <style>
 :root{--ink:#1c1f24;--soft:#5b6270;--line:#dde1e7;--bg:#f5f6f8;--card:#fff;--blue:#1d5fbf;--green:#1e7b45;--red:#b3261e;--amber:#9a6700}
-*{box-sizing:border-box} body{margin:0;font:16px/1.5 "Segoe UI",system-ui,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+*{box-sizing:border-box} [hidden]{display:none!important} body{margin:0;font:16px/1.5 "Segoe UI",system-ui,Arial,sans-serif;color:var(--ink);background:var(--bg)}
 header{background:#fff;border-bottom:1px solid var(--line)} .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
 header .wrap{display:flex;align-items:center;gap:12px;height:60px} header b{font-size:19px} header span{color:var(--soft);font-size:14px}
 h2{font-size:18px;margin:28px 0 12px} .muted{color:var(--soft);font-size:14px}
@@ -34,6 +34,11 @@ details{margin-top:10px} summary{cursor:pointer;color:var(--soft);font-size:14px
 </style></head><body>
 <header><div class="wrap"><b>DXF to IFC</b><span>2D floor plans to BIM models, on this computer</span></div></header>
 <main class="wrap">
+<div id="offline" class="how" hidden><div><b>A copy to look at</b>The plans below were converted for you: open the 3D viewer,
+  the review page or both side by side, or take the IFC files into your own BIM software. Nothing needs installing.</div>
+  <div><b>Convert your own DXF files</b>Close this page and double-click <code>start.bat</code> in this folder. It needs
+  Python 3.10 or newer (python.org); the first start installs the converter, which takes a few minutes and needs internet.
+  This page then opens with a drop zone. Your files stay on your computer.</div></div>
 <label id="drop" tabindex="-1"><input type="file" id="file" accept=".dxf" multiple>
   <b>Drop DXF floor plans here, or click to choose</b>
   <span class="muted">One storey per file. Files are converted on this computer; nothing is sent anywhere.</span></label>
@@ -57,9 +62,10 @@ details{margin-top:10px} summary{cursor:pointer;color:var(--soft);font-size:14px
 const $ = id => document.getElementById(id), esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
 const queue = [];
 let busy = false;
+const STATIC = null;  // the emailed copy (share-pack --offline) puts its plans here: no server, no upload
 
 function card(r) {
-  const passed = r.failed.length === 0, open = f => `/out/${r.id}/${f}`;
+  const passed = r.failed.length === 0, open = f => STATIC ? `plans/${encodeURIComponent(r.id)}/${f}` : `/out/${r.id}/${f}`;
   return `<article class="card">${r.thumb ? `<img src="${open("plan.png")}" alt="2D plan of ${esc(r.file)}" loading="lazy">` : ""}
   <div class="body"><div class="title">${esc(r.file)}</div>
   <div class="counts">${esc(r.date)} &middot; ${r.walls} walls &middot; ${r.openings} openings &middot; ${r.rooms} rooms${r.seconds != null ? ` &middot; ${r.seconds} s` : ""}</div>
@@ -73,7 +79,7 @@ function card(r) {
   <a class="btn" href="${open("model_ifc2x3.ifc")}" download="${esc(r.stem)}_ifc2x3.ifc">IFC2X3</a></div></div></article>`;
 }
 async function loadRuns() {
-  const runs = await (await fetch("/api/runs")).json();
+  const runs = STATIC || await (await fetch("/api/runs")).json();
   $("runs").innerHTML = runs.map(card).join(""); $("empty").hidden = runs.length > 0;
 }
 function add(files) {
@@ -106,5 +112,9 @@ const drop = $("drop");
 drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
 drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); add(e.dataTransfer.files); };
+if (STATIC) {
+  for (const el of [drop, document.querySelector("details")]) el.style.display = "none";
+  $("offline").hidden = false; $("empty").textContent = "No plans in this copy.";
+}
 loadRuns();
 </script></body></html>

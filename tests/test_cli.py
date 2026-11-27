@@ -202,6 +202,9 @@ def test_share_site_serves_plans_and_saves_feedback(tmp_path):
     assert "site/share.py" in names and "site/plans/house/compare.html" in names and not any("plan.json" in n for n in names)
     assert pack([tmp_path / "plans" / "house"], tmp_path / "mail.zip", offline=True) == ["house"]
     names = zipfile.ZipFile(tmp_path / "mail.zip").namelist()
-    assert "dxf2ifc user test/START HERE.html" in names and "dxf2ifc user test/house/viewer.html" in names
-    assert "dxf2ifc user test/house/review.html" not in names
-    assert not any(n.endswith(("share.py", "compare.html", "plan.json")) for n in names)
+    top = "dxf2ifc prototype/"
+    assert {top + n for n in ("START HERE.html", "start.bat", "plans/house/viewer.html", "plans/house/compare.html",
+                              "app/dxf2ifc/cli.py", "app/requirements.txt")} <= set(names)
+    assert not any("plan.json" in n or "__pycache__" in n or n.endswith((".dxf", ".env")) for n in names)
+    start = zipfile.ZipFile(tmp_path / "mail.zip").read(top + "START HERE.html").decode("utf-8")
+    assert "const STATIC = null;" not in start and '"id": "house"' in start

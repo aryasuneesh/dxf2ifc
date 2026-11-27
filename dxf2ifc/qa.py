@@ -70,8 +70,9 @@ def _solids(product):
     return out
 
 
-def overlaps(ifc, tol=1e-4) -> list[tuple[str, str]]:
-    """Pairs of physical elements that share space (more than tol m2 in plan and 1 mm in height).
+def overlaps(ifc, tol=1e-3) -> list[tuple[str, str]]:
+    """Pairs of physical elements that share space (more than tol m thick in plan and in height:
+    thinner is coordinate rounding).
     A door or window inside the opening of its own wall does not count: the opening is cut from the wall."""
     skip = ("IfcSpace", "IfcOpeningElement", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcAnnotation")
     host = {}
@@ -86,7 +87,7 @@ def overlaps(ifc, tol=1e-4) -> list[tuple[str, str]]:
             b, other, w0, w1 = solids[j]
             if j <= i or a.id() == b.id() or host.get(a.id()) == b.id() or host.get(b.id()) == a.id():
                 continue
-            if min(z1, w1) - max(z0, w0) > 1e-3 and shape.intersection(other).area > tol:
+            if min(z1, w1) - max(z0, w0) > tol and not shape.intersection(other).buffer(-tol / 2).is_empty:
                 pairs.add(tuple(sorted((a.GlobalId, b.GlobalId))))
     return sorted(pairs)
 

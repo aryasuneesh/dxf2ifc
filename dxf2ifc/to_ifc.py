@@ -30,6 +30,7 @@ import ifcopenshell.validate
 import numpy as np
 from ifcopenshell.util.shape_builder import ShapeBuilder
 from shapely.geometry import LineString, Point, Polygon
+from shapely import make_valid, set_precision
 from shapely.ops import split, unary_union
 
 from . import config
@@ -239,6 +240,10 @@ class _Writer:
             walls[wall["id"]] = (product, None)
 
         fillings, spans = [], []
+        # a door or window sits in its own wall's opening, but must not reach into a crossing wall, a column or another door
+        solid = [(None, _valid(Polygon(o))) for ps in [*column_pieces.values(), *curved_pieces.values()] for o in ps]
+        solid += [(wid, _valid(Polygon(o))) for wid, ps in wall_pieces.items() for o in ps]
+        leaves = _Claims()
         for opening in plan["openings"]:
             wall_id = opening["wall_id"]
             if wall_id in absorbed:  # the wall that took its place carries the opening, unless it has one there already
@@ -270,6 +275,13 @@ class _Writer:
                 product.OverallHeight, product.OverallWidth = float(opening["height_m"]), float(opening["width_m"])
                 self.place(product, elevation)
                 parts = _door(span, wall, opening) if opening["kind"] == "door" else _window(span, wall, opening)
+                others = _Claims()
+                others.shapes = [shape for wid, shape in solid if wid != wall_id]
+                parts = [(p, *rest) for outline, *rest in parts for p in _Claims().clip(outline, others, leaves)]
+                leaves.claim(*[p for p, *_ in parts])
+                if not parts:
+                    api.root.remove_product(f, product=product)
+                    continue
                 self.body_of(product, parts, opening["confidence"])
                 if opening["kind"] == "door" and opening.get("swing") and not self.old:
                     product.OperationType = _door_operation(span, opening["swing"])
@@ -390,7 +402,7 @@ class _Writer:
             if ifc_class in ("IfcBuildingElementProxy", "IfcFlowTerminal", "IfcFurnishingElement"):
                 product.ObjectType = item["kind"]
             _, bottom, upper = config.EQUIPMENT[item["kind"]]
-            pieces = items.clip(item["polygon"], full, flights)
+            pieces = items.clip(item["polygon"], full, flights, leaves)
             if not pieces:
                 api.root.remove_product(f, product=product)
                 continue
@@ -464,14 +476,19 @@ class _Claims:
         self.shapes = []
 
     def claim(self, *outlines):
-        self.shapes += [Polygon(o) for o in outlines]
+        self.shapes += [_valid(Polygon(o)) for o in outlines]
 
     def clip(self, outline, *others):
-        shape = Polygon(outline).buffer(0)
+        shape = _valid(Polygon(outline))
         hits = [s for claims in (self, *others) for s in claims.shapes if s.intersects(shape)]
-        pieces = _pieces(shape.difference(unary_union(hits)) if hits else shape)
+        pieces = _pieces(shape.difference(_valid(unary_union(hits))) if hits else shape)
         self.claim(*pieces)
         return pieces
+
+
+def _valid(geom):
+    """Snapped to 0.1 mm and repaired: GEOS overlay fails on nearly-coincident edges otherwise."""
+    return set_precision(make_valid(geom), 1e-4).buffer(0)
 
 
 def _pieces(geom):

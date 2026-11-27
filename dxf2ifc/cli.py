@@ -1,6 +1,7 @@
 """Command line: python -m dxf2ifc <command>. `run` does the whole chain on one DXF."""
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -43,6 +44,8 @@ def convert(dxf_path, out_dir, elevation=None, height=None, bbox=None, project=N
     write_compare(out_dir / "compare.html", plan["source"]["file"])
     (out_dir / "plan.json").write_text(json.dumps(plan, indent=1, ensure_ascii=False), encoding="utf-8")
     (out_dir / "roles.json").write_text(json.dumps(roles, indent=1, ensure_ascii=False), encoding="utf-8")
+    (out_dir / "plan.png").write_bytes(plan_image(plan, drawing=drawing, size=600))  # thumbnail for the home page
+    (out_dir / "checks.json").write_text(json.dumps(checks, ensure_ascii=False), encoding="utf-8")
     return plan, checks
 
 
@@ -85,47 +88,33 @@ def merge(plan_paths, out_path) -> list[str]:
 
 # ---------------------------------------------------------------- try-it page
 
-PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DXF to IFC</title>
-<style>body{font:17px/1.5 Segoe UI,Arial,sans-serif;max-width:720px;margin:40px auto;padding:0 20px}
-input,button{font:inherit;padding:6px 10px;margin:4px 0} button{background:#1d5fbf;color:#fff;border:0;border-radius:4px;cursor:pointer}
-label{display:block;margin-top:12px} pre{background:#f3f3f3;padding:12px;white-space:pre-wrap} .note{color:#555;font-size:15px}</style>
-</head><body><h1>DXF to IFC</h1>
-<p>Choose one floor plan as a DXF file. It is processed on this computer; nothing is sent anywhere.</p>
-<label>DXF file <input type="file" id="file" accept=".dxf"></label>
-<label>Storey elevation in metres (leave empty to read it from the drawing) <input id="elevation" size="8"></label>
-<label>Storey height in metres (leave empty for 3.00) <input id="height" size="8"></label>
-<p><button id="go">Convert</button> <span id="state" class="note"></span></p>
-<pre id="result" hidden></pre><p id="links" hidden></p>
-<script>
-document.getElementById("go").onclick = async () => {
-  const file = document.getElementById("file").files[0];
-  if (!file) { document.getElementById("state").textContent = "Choose a file first."; return; }
-  const query = new URLSearchParams({name: file.name, elevation: document.getElementById("elevation").value,
-                                     height: document.getElementById("height").value});
-  document.getElementById("state").textContent = "Working...";
-  const reply = await fetch("/run?" + query, {method: "POST", body: file});
-  const data = await reply.json();
-  document.getElementById("state").textContent = reply.ok ? "Done." : "Could not convert this file.";
-  const result = document.getElementById("result");
-  result.hidden = false; result.textContent = reply.ok ? data.summary : data.error;
-  const links = document.getElementById("links");
-  links.hidden = !reply.ok;
-  if (reply.ok) links.innerHTML = `<a href="/out/${data.id}/review.html" target="_blank">Open the review page</a> &middot; ` +
-    `<a href="/out/${data.id}/compare.html" target="_blank">Plan and 3D side by side</a> &middot; ` +
-    `<a href="/out/${data.id}/viewer.html" target="_blank">3D view</a> &middot; ` +
-    `<a href="/out/${data.id}/model.ifc" download>IFC4</a> &middot; <a href="/out/${data.id}/model_ifc2x3.ifc" download>IFC2X3</a> &middot; <a href="/out/${data.id}/plan.json" download>plan.json</a>`;
-};
-</script></body></html>"""
+PAGE = (Path(__file__).parent / "home_page.html").read_text(encoding="utf-8")
 SERVED = {"review.html": "text/html; charset=utf-8", "model.ifc": "application/octet-stream",
           "model_ifc2x3.ifc": "application/octet-stream", "viewer.html": "text/html; charset=utf-8",
           "compare.html": "text/html; charset=utf-8",
-          "plan.json": "application/json", "roles.json": "application/json"}
+          "plan.json": "application/json", "roles.json": "application/json", "plan.png": "image/png"}
+
+
+def run_card(run_dir) -> dict | None:
+    """What the home page shows about one conversion folder, or None if it is not a finished one."""
+    try:
+        plan = json.loads((run_dir / "plan.json").read_text(encoding="utf-8"))
+        checks = json.loads((run_dir / "checks.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return {"id": run_dir.name, "file": plan["source"]["file"], "stem": Path(plan["source"]["file"]).stem,
+            "date": time.strftime("%d %b %Y %H:%M", time.localtime((run_dir / "plan.json").stat().st_mtime)),
+            "walls": len(plan["walls"]), "openings": len(plan["openings"]), "rooms": len(plan["rooms"]),
+            "seconds": plan["stats"].get("runtime_s"), "review": sum(f["severity"] == "review" for f in plan["flags"]),
+            "passed": sum(c["passed"] is True for c in checks), "thumb": (run_dir / "plan.png").is_file(),
+            "failed": [f"{c['id']} {c['name'].lower()}: {c['value']}" for c in checks if c["passed"] is False]}
 
 
 def make_server(root, port=8000) -> ThreadingHTTPServer:
     """A local page to try the tool: upload a DXF, get the review page and the IFC. Bound to this machine only."""
     root = Path(root)
-    lock, counter = threading.Lock(), [0]
+    lock = threading.Lock()
+    runs = lambda: sorted((d for d in root.glob("*") if d.is_dir() and d.name.isdigit()), key=lambda d: int(d.name))
 
     class Handler(BaseHTTPRequestHandler):
         def reply(self, status, body, kind):
@@ -139,7 +128,10 @@ def make_server(root, port=8000) -> ThreadingHTTPServer:
             path = urlparse(self.path).path
             match = re.fullmatch(r"/out/(\d+)/([a-z.]+)", path)
             if path == "/":
-                self.reply(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
+                self.reply(200, PAGE.replace("__ROOT__", html.escape(str(root.resolve()))).encode("utf-8"), "text/html; charset=utf-8")
+            elif path == "/api/runs":  # newest first
+                cards = [c for c in map(run_card, reversed(runs())) if c]
+                self.reply(200, json.dumps(cards, ensure_ascii=False).encode("utf-8"), "application/json")
             elif match and match.group(2) in SERVED and (root / match.group(1) / match.group(2)).is_file():
                 self.reply(200, (root / match.group(1) / match.group(2)).read_bytes(), SERVED[match.group(2)])
             else:
@@ -163,14 +155,14 @@ def make_server(root, port=8000) -> ThreadingHTTPServer:
             query = {key: values[0] for key, values in parse_qs(url.query).items()}
             number = lambda key: float(query[key].replace(",", ".")) if query.get(key, "").strip() else None
             with lock:  # one conversion at a time keeps memory use predictable
-                counter[0] += 1
-                run_dir = root / str(counter[0])
+                number_id = int(runs()[-1].name) + 1 if runs() else 1  # continues after a restart
+                run_dir = root / str(number_id)
                 run_dir.mkdir(parents=True, exist_ok=True)
                 name = re.sub(r"[^A-Za-z0-9._ -]", "_", Path(query.get("name", "plan.dxf")).name) or "plan.dxf"
                 (run_dir / name).write_bytes(self.rfile.read(size))
                 try:
                     plan, checks = convert(run_dir / name, run_dir, elevation=number("elevation"), height=number("height"))
-                    body, status = {"id": counter[0], "summary": summary(plan, checks, run_dir)}, 200
+                    body, status = {"id": number_id, "summary": summary(plan, checks, run_dir)}, 200
                 except ValueError as err:
                     body, status = {"error": str(err)}, 422
             self.reply(status, json.dumps(body).encode("utf-8"), "application/json")

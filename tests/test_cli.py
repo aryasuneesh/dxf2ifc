@@ -121,7 +121,7 @@ def test_try_it_page(tmp_path):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         page = urllib.request.urlopen(base + "/", timeout=30).read().decode("utf-8")
-        assert "Choose one floor plan" in page
+        assert "Drop DXF floor plans here" in page
         request = urllib.request.Request(base + "/run?name=house.dxf&elevation=4,35&height=", method="POST",
                                          data=(tmp_path / "house.dxf").read_bytes())
         reply = json.loads(urllib.request.urlopen(request, timeout=120).read())
@@ -129,6 +129,9 @@ def test_try_it_page(tmp_path):
         review = urllib.request.urlopen(f"{base}/out/1/review.html", timeout=30).read().decode("utf-8")
         assert "TO BE VERIFIED" in review and "+4.35 m" in review
         assert urllib.request.urlopen(f"{base}/out/1/model.ifc", timeout=30).read().startswith(b"ISO-10303-21")
+        cards = json.loads(urllib.request.urlopen(base + "/api/runs", timeout=30).read())
+        assert [c["file"] for c in cards] == ["house.dxf"] and cards[0]["walls"] == 5 and cards[0]["thumb"]
+        assert urllib.request.urlopen(f"{base}/out/1/plan.png", timeout=30).read().startswith(b"\x89PNG")
 
         for bad in ("/out/1/house.dxf", "/out/../cli.py", "/out/1/../../x", "/nothing"):
             with pytest.raises(urllib.error.HTTPError) as error:

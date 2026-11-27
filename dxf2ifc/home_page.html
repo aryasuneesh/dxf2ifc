@@ -1,0 +1,110 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DXF to IFC</title>
+<style>
+:root{--ink:#1c1f24;--soft:#5b6270;--line:#dde1e7;--bg:#f5f6f8;--card:#fff;--blue:#1d5fbf;--green:#1e7b45;--red:#b3261e;--amber:#9a6700}
+*{box-sizing:border-box} body{margin:0;font:16px/1.5 "Segoe UI",system-ui,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+header{background:#fff;border-bottom:1px solid var(--line)} .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+header .wrap{display:flex;align-items:center;gap:12px;height:60px} header b{font-size:19px} header span{color:var(--soft);font-size:14px}
+h2{font-size:18px;margin:28px 0 12px} .muted{color:var(--soft);font-size:14px}
+#drop{display:block;border:2px dashed #b7bfcc;border-radius:10px;background:#fff;padding:34px 20px;text-align:center;cursor:pointer;margin-top:24px}
+#drop.over{border-color:var(--blue);background:#eef4fd} #drop b{font-size:18px;display:block;margin-bottom:4px}
+#drop input{position:absolute;width:1px;height:1px;opacity:0}
+details{margin-top:10px} summary{cursor:pointer;color:var(--soft);font-size:14px}
+.opts{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px} .opts label{font-size:14px;color:var(--soft)}
+.opts input{display:block;font:inherit;padding:5px 8px;width:150px;border:1px solid var(--line);border-radius:5px}
+#queue{list-style:none;padding:0;margin:14px 0 0} #queue li{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:center}
+#queue .name{font-weight:600;flex:1;overflow-wrap:anywhere} .state{font-size:14px;color:var(--soft)} .state.bad{color:var(--red)}
+.spin{width:16px;height:16px;border:2px solid #c9d3e3;border-top-color:var(--blue);border-radius:50%;animation:s 0.8s linear infinite;flex:none}
+@keyframes s{to{transform:rotate(360deg)}}
+.how{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:8px}
+.how div{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:14px} .how b{display:block;font-size:15px}
+#runs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.card img{width:100%;height:170px;object-fit:contain;background:#fff;border-bottom:1px solid var(--line)}
+.card .body{padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:6px}
+.card .title{font-weight:600;overflow-wrap:anywhere} .counts{font-size:13px;color:var(--soft)}
+.badge{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:10px}
+.ok{background:#e3f3e8;color:var(--green)} .warn{background:#fdf0d5;color:var(--amber)}
+.fails{font-size:13px;color:var(--amber);margin:0;padding-left:18px}
+.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:6px}
+.btn{display:inline-block;font:inherit;font-size:14px;padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;cursor:pointer}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff} .btn:hover{filter:brightness(0.95)}
+.btn:focus-visible,#drop:focus-within{outline:3px solid #8db4ef;outline-offset:2px}
+#empty{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px} footer{margin:40px 0 30px;font-size:13px;color:var(--soft)}
+</style></head><body>
+<header><div class="wrap"><b>DXF to IFC</b><span>2D floor plans to BIM models, on this computer</span></div></header>
+<main class="wrap">
+<label id="drop" tabindex="-1"><input type="file" id="file" accept=".dxf" multiple>
+  <b>Drop DXF floor plans here, or click to choose</b>
+  <span class="muted">One storey per file. Files are converted on this computer; nothing is sent anywhere.</span></label>
+<details><summary>Storey settings (optional)</summary><div class="opts">
+  <label>Elevation (m)<input id="elevation" inputmode="decimal" placeholder="from drawing"></label>
+  <label>Storey height (m)<input id="height" inputmode="decimal" placeholder="3.00"></label></div>
+  <p class="muted">Leave empty to read the elevation from the drawing and use 3.00 m height. Applies to the files you add next.</p></details>
+<ul id="queue" aria-live="polite"></ul>
+
+<h2>Conversions</h2><div id="runs"></div><p id="empty" hidden>No conversions yet. Drop a DXF above to start.</p>
+
+<h2>How it works</h2><div class="how">
+  <div><b>1. Read</b>Layers are sorted into walls, doors, windows, stairs, columns... by name rules and geometry, without AI by default.</div>
+  <div><b>2. Build</b>Walls, openings, slabs, rooms (IfcSpace with name, area, use), stairs and columns become IFC4 and IFC2X3 elements. No two elements share space.</div>
+  <div><b>3. Check</b>12 requirement checks run on every model. Each element carries how sure the converter is and why.</div>
+  <div><b>4. Review</b>Open the 3D viewer (Blender-style keys, press ?) or the review page to mark items correct or wrong.</div>
+</div>
+<footer>Runs locally with <code>python -m dxf2ifc serve</code>. Output folder: <code>__ROOT__</code>.</footer>
+</main>
+<script>
+const $ = id => document.getElementById(id), esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+const queue = [];
+let busy = false;
+
+function card(r) {
+  const passed = r.failed.length === 0, open = f => `/out/${r.id}/${f}`;
+  return `<article class="card">${r.thumb ? `<img src="${open("plan.png")}" alt="2D plan of ${esc(r.file)}" loading="lazy">` : ""}
+  <div class="body"><div class="title">${esc(r.file)}</div>
+  <div class="counts">${esc(r.date)} &middot; ${r.walls} walls &middot; ${r.openings} openings &middot; ${r.rooms} rooms${r.seconds != null ? ` &middot; ${r.seconds} s` : ""}</div>
+  <div><span class="badge ${passed ? "ok" : "warn"}">${r.passed} of ${r.passed + r.failed.length} checks passed</span>
+  ${r.review ? ` <span class="badge warn">${r.review} to review</span>` : ""}</div>
+  ${passed ? "" : `<ul class="fails">${r.failed.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`}
+  <div class="actions"><a class="btn primary" href="${open("viewer.html")}" target="_blank">Open 3D</a>
+  <a class="btn" href="${open("review.html")}" target="_blank">Review</a>
+  <a class="btn" href="${open("compare.html")}" target="_blank">Plan + 3D</a>
+  <a class="btn" href="${open("model.ifc")}" download="${esc(r.stem)}.ifc">IFC4</a>
+  <a class="btn" href="${open("model_ifc2x3.ifc")}" download="${esc(r.stem)}_ifc2x3.ifc">IFC2X3</a></div></div></article>`;
+}
+async function loadRuns() {
+  const runs = await (await fetch("/api/runs")).json();
+  $("runs").innerHTML = runs.map(card).join(""); $("empty").hidden = runs.length > 0;
+}
+function add(files) {
+  for (const file of files) {
+    if (!/\.dxf$/i.test(file.name)) continue;
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="name">${esc(file.name)}</span><span class="state">Waiting</span>`;
+    $("queue").append(li);
+    queue.push({file, li, elevation: $("elevation").value, height: $("height").value});
+  }
+  next();
+}
+async function next() {
+  if (busy || !queue.length) return;
+  busy = true;
+  const {file, li, elevation, height} = queue.shift(), state = li.querySelector(".state"), t0 = Date.now();
+  li.insertAdjacentHTML("afterbegin", '<span class="spin" aria-hidden="true"></span>');
+  const tick = setInterval(() => { state.textContent = `Converting... ${Math.round((Date.now() - t0) / 1000)} s`; }, 500);
+  try {
+    const reply = await fetch("/run?" + new URLSearchParams({name: file.name, elevation, height}), {method: "POST", body: file});
+    const data = await reply.json();
+    if (!reply.ok) throw new Error(data.error);
+    li.remove(); await loadRuns();
+  } catch (err) {
+    li.querySelector(".spin").remove(); state.classList.add("bad"); state.textContent = "Could not convert: " + err.message;
+  } finally { clearInterval(tick); busy = false; next(); }
+}
+$("file").onchange = e => { add(e.target.files); e.target.value = ""; };
+const drop = $("drop");
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); add(e.dataTransfer.files); };
+loadRuns();
+</script></body></html>

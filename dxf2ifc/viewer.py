@@ -15,6 +15,7 @@ from pathlib import Path
 import ifcopenshell
 import ifcopenshell.geom
 import ifcopenshell.util.element as element
+import ifcopenshell.util.placement as placement
 
 from . import config
 
@@ -58,6 +59,20 @@ def elements(ifc_path) -> list[dict]:
         if not iterator.next():
             break
     return result
+
+
+def levels(ifc_path) -> dict:
+    """Storeys (name, elevation) and grid axes (tag, two points in model coordinates) for labels in the page."""
+    model = ifcopenshell.open(str(ifc_path))
+    storeys = [{"name": s.Name or "", "elevation": float(s.Elevation or 0)} for s in model.by_type("IfcBuildingStorey")]
+    grid = []
+    for g in model.by_type("IfcGrid"):
+        matrix = placement.get_local_placement(g.ObjectPlacement)
+        for axis in [*(g.UAxes or []), *(g.VAxes or [])]:
+            points = [matrix @ [*p.Coordinates[:2], 0, 1] for p in axis.AxisCurve.Points]
+            grid.append({"tag": axis.AxisTag or "", "a": [round(float(c), 3) for c in points[0][:3]],
+                         "b": [round(float(c), 3) for c in points[-1][:3]]})
+    return {"storeys": sorted(storeys, key=lambda s: s["elevation"]), "grid": grid}
 
 
 UNITS = (("Area", "m²"), ("Volume", "m³"), ("Length", "m"), ("Width", "m"), ("Height", "m"), ("Depth", "m"),
@@ -129,7 +144,7 @@ def write_viewer(ifc_path, out_path, title=None, plan_png=None, notes=None, gene
     items = elements(ifc_path)
     title = title or Path(ifc_path).stem
     colours = {name: "#%02x%02x%02x" % tuple(round(c * 255) for c in rgb) for name, rgb in config.CONFIDENCE_COLOURS.items()}
-    setup = {"title": title, "colours": colours, "notes": notes or {}, "general": general or []}
+    setup = {"title": title, "colours": colours, "notes": notes or {}, "general": general or [], **levels(ifc_path)}
     plan = (f'<img id="planimg" alt="The 2D plan" src="data:image/png;base64,{base64.b64encode(plan_png).decode("ascii")}">'
             if plan_png else "")
     script_json = lambda value: json.dumps(value, separators=(",", ":")).replace("</", "<\\/")

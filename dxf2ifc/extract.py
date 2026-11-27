@@ -823,6 +823,42 @@ def _fire_symbols(drawing, building, flags):
     return symbols
 
 
+# ---------------------------------------------------------------- structural grid
+
+def _grid(drawing, roles):
+    """Grid axes: long lines on a grid layer (collinear pieces joined), each tagged with the nearest grid
+    label just beyond one of its ends, where the bubble is. A line with no label keeps an empty tag."""
+    layers = {name for name, entry in roles["layers"].items() if entry["role"] == "grid"}
+    axes = []  # [unit direction, normal offset, (lo, hi) along the direction, layer]
+    for s in drawing.segments:
+        if s.layer not in layers or s.length < config.GRID_MIN_LENGTH:
+            continue
+        ux, uy = (s.x2 - s.x1) / s.length, (s.y2 - s.y1) / s.length
+        if ux < -1e-9 or (abs(ux) < 1e-9 and uy < 0):  # one sense per direction
+            ux, uy = -ux, -uy
+        offset, a, b = s.x1 * -uy + s.y1 * ux, s.x1 * ux + s.y1 * uy, s.x2 * ux + s.y2 * uy
+        for axis in axes:
+            (vx, vy), off, (lo, hi), _ = axis
+            if abs(ux * vy - uy * vx) < 0.01 and abs(off - offset) < 0.05:
+                axis[2] = (min(lo, a, b), max(hi, a, b))
+                break
+        else:
+            axes.append([(ux, uy), offset, (min(a, b), max(a, b)), s.layer])
+    tags = [(" ".join(label.text.replace(".", " ").split()), label.x, label.y) for label in drawing.labels if label.layer in layers]
+    grid = []
+    for (ux, uy), offset, (lo, hi), layer in axes:
+        best = None
+        for text, x, y in tags:
+            side, along = abs(x * -uy + y * ux - offset), x * ux + y * uy
+            past = max(lo - along, along - hi)  # > 0 beyond an end, < 0 inside the line
+            if text and side <= config.GRID_TAG_NEAR and -config.GRID_TAG_REACH <= past <= config.GRID_TAG_REACH:
+                if best is None or abs(past) < best[0]:
+                    best = (abs(past), text)
+        point = lambda t: [round(t * ux - offset * uy, 3), round(t * uy + offset * ux, 3)]
+        grid.append({"tag": best[1] if best else "", "line": [point(lo), point(hi)], "layer": layer})
+    return grid
+
+
 # ---------------------------------------------------------------- beams
 
 def _beams(drawing, roles, flags):
@@ -1149,7 +1185,8 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
         "schema_version": 1,
         "source": {"file": Path(drawing.path).name, "project": drawing.project, "units_in": drawing.units_in,
                    "scale_to_m": drawing.scale_to_m, "origin_offset": list(drawing.origin_offset), "family": family},
-        "storey": storey, "walls": plan_walls, "curved_walls": curved, "beams": beams, "openings": plan_openings,
+        "storey": storey, "walls": plan_walls, "curved_walls": curved, "beams": beams, "grid": _grid(drawing, roles),
+        "openings": plan_openings,
         "rooms": [{"id": r["id"], **{k: v for k, v in r.items() if k != "id"}} for r in rooms],
         "slab": slab, "stairs": stairs, "columns": columns, "equipment": equipment, "fire": fire, "flags": flags,
         "stats": {"wall_layer_length_m": round(sum(s.length for s, _ in candidates), 2),

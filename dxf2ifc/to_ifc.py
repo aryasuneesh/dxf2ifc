@@ -7,6 +7,7 @@ Every body is an extruded outline in plan coordinates, lifted to the storey elev
 
 import math
 import re
+from collections import Counter
 import uuid
 from pathlib import Path
 
@@ -151,6 +152,25 @@ class _Writer:
             self.material([entity], config.ASSUMED_MATERIAL[kind])
             self.opening_types[key] = entity
         return self.opening_types[key]
+
+    def grid(self, plan, elevation, tag):
+        """IfcGrid from the drawing's grid lines: the most common direction is U, the others V.
+        ponytail: an IfcGrid needs both U and V axes; a grid drawn in one direction only is left out."""
+        axes = plan.get("grid") or []
+        angle = lambda a: round(math.degrees(math.atan2(a["line"][1][1] - a["line"][0][1], a["line"][1][0] - a["line"][0][0])) % 180)
+        if not axes:
+            return None
+        main = Counter(angle(a) for a in axes).most_common(1)[0][0]
+        is_u = lambda a: min(abs(angle(a) - main), 180 - abs(angle(a) - main)) <= 10
+        u, v = [a for a in axes if is_u(a)], [a for a in axes if not is_u(a)]
+        if not u or not v:
+            return None
+        make = lambda a: self.f.createIfcGridAxis(a["tag"] or None, self.f.createIfcPolyline(
+            [self.f.createIfcCartesianPoint([float(x), float(y)]) for x, y in a["line"]]), True)
+        grid = self.root("IfcGrid", "Grid", "grid", tag)
+        grid.UAxes, grid.VAxes = [make(a) for a in u], [make(a) for a in v]
+        self.place(grid, elevation)
+        return grid
 
     def place(self, product, elevation):
         matrix = np.eye(4)
@@ -430,6 +450,9 @@ class _Writer:
             fire.append(product)
 
         contained = [product for product, _ in walls.values()] + fillings + [slab] + stairs + columns + fire
+        grid = self.grid(plan, elevation, tag)
+        if grid:
+            contained.append(grid)
         api.spatial.assign_container(f, products=contained, relating_structure=storey)
         if spaces:
             api.aggregate.assign_object(f, products=spaces, relating_object=storey)

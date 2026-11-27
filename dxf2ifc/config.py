@@ -154,6 +154,10 @@ WALL_MATERIAL_WORDS = [("Concrete", r"b[ée]ton|beton|concrete"), ("Brick", r"br
                        ("Timber", r"(^|[^a-z])bois|holz|timber|wood"), ("Masonry", r"ma[cç]onnerie|mauerwerk|masonry|parpaing|bloc")]
 WALL_MATERIAL_BY_THICKNESS = [(0.125, "Plasterboard (assumed)"), (0.21, "Masonry (assumed)"), (99, "Concrete (assumed)")]
 
+# structural grid: long lines on a grid layer, tagged by the label in the bubble at one of their ends
+GRID_MIN_LENGTH = 3.0  # m, shorter lines on a grid layer are bubbles, ticks or leaders
+GRID_TAG_NEAR = 1.0  # m, a tag sits at most this far to the side of its line
+GRID_TAG_REACH = 3.0  # m, and at most this far past (or before) the line's end
 # beams: pairs of parallel lines on a beam layer, hung under the ceiling
 BEAM_DEPTH = 0.4  # m, plans do not show it
 BEAM_MIN_WIDTH = 0.12  # m, closer line pairs are the two strokes of one dashed edge, not a beam

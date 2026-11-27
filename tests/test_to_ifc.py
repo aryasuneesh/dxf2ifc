@@ -278,3 +278,19 @@ def test_no_two_elements_share_space(tmp_path):
     assert overlaps(ifc) == []  # corners, the twin wall and the column in the wall corner all resolved
     assert len(ifc.by_type("IfcWall")) == len(FIXTURE["walls"])  # the twin is absorbed
     assert len(ifc.by_type("IfcOpeningElement")) == len(FIXTURE["openings"])  # and its opening is not doubled
+
+
+def test_elements_carry_quantities_types_and_uses(model):
+    model, _ = model
+    wall = model.by_type("IfcWall")[0]
+    assert element.get_pset(wall, "Qto_WallBaseQuantities")["NetVolume"] > 0
+    door = model.by_type("IfcDoor")[0]
+    assert element.get_type(door).Name.startswith("Door ") and element.get_material(door, should_inherit=True).Name.endswith("(assumed)")
+    assert all(s.ObjectType and element.get_pset(s, "Qto_SpaceBaseQuantities")["NetPerimeter"] > 0 for s in model.by_type("IfcSpace"))
+
+
+@pytest.mark.parametrize("name, use", [("CHAMBRE 2", "bedroom"), ("CUISINE/ SAM / SEJOUR", "living"), ("DEB.", "storage"),
+                                       ("Salle de bain", "bathroom"), ("TERRASSE", "outdoor"), ("Local technique", "technical")])
+def test_room_use_from_its_name(name, use):
+    from dxf2ifc.extract import ROOM_USE_RES
+    assert next(u for u, pattern in ROOM_USE_RES if pattern.search(name)) == use

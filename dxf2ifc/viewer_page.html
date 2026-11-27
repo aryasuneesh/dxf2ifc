@@ -109,7 +109,7 @@ const WINDOW_COLOUR = "#5aa9e6", esc = s => String(s ?? "").replace(/[&<>"]/g, c
 
 // ---------------------------------------------------------------- scene
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf4f5f7);
-let camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000);
+let camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 5000);  // narrow: columns stay upright, less wide-angle lean
 camera.up.set(0, 0, 1);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
@@ -338,7 +338,8 @@ function light(ms) { lit.forEach(m => m.material.emissive.setHex(0)); lit = ms; 
 function frame(ms) {
   const b = new THREE.Box3(); ms.forEach(m => b.expandByObject(m));
   const c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length(), 4);
-  controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r * 0.6, -r * 0.85, r * 0.75)); controls.update();
+  const k = Math.tan(Math.PI / 8) / Math.tan(THREE.MathUtils.degToRad(camera.fov || 45) / 2);  // same framing as a 45 degree lens
+  controls.target.copy(c); camera.position.copy(c).add(new THREE.Vector3(r * 0.6, -r * 0.85, r * 0.75).multiplyScalar(k)); controls.update();
 }
 const NOUNS = {IfcSpace: "room", IfcWallStandardCase: "wall", IfcOpeningElement: "gap", IfcBuildingElementProxy: "fire-safety symbol", IfcColumn: "column", IfcFurniture: "furniture item", IfcSanitaryTerminal: "fitting", IfcElectricAppliance: "appliance"};
 const ASSUMED = "Values assumed for the whole storey: ", bullets = items => "<ul style='margin:2px 0;padding-left:18px'>" + items.map(i => `<li>${esc(i)}</li>`).join("") + "</ul>";

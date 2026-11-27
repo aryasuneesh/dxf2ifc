@@ -94,6 +94,29 @@ RASTER_MAX_SIDE = 6000  # px, larger plans use a coarser pixel
 RASTER_MARGIN = 1.0  # m of empty space around the walls
 SEED_SEARCH = 0.5  # m, how far to look for free space when a label sits on a wall
 SUMMARY_AREA = 2.0  # a printed area this many times the space is a total for a flat or storey
+# what a room is used for, from its name (FR, DE, EN); the first use in this list that matches wins
+ROOM_USES = [
+    ("outdoor", r"terrasse|balcon|loggia|jardin|terrace|balkon|garten|patio"),
+    ("void", r"(^|[^a-z])vide($|[^a-z])|void|luftraum"),
+    ("parking", r"garage|parking|stationnement"),
+    ("stair", r"escalier|treppe|stair"),
+    ("living", r"s[ée]jour|salon|living|wohn|salle commune|s[ée]j\."),
+    ("kitchen", r"cuisine|k[üu]che|kitchen"),
+    ("dining", r"salle [àa] manger|(^|[^a-z])sam($|[^a-z])|essen|dining"),
+    ("bedroom", r"chambre|schlaf|bedroom|(^|[^a-z])ch\.?\s*\d"),
+    ("bathroom", r"bain|douche|salle d.eau|(^|[^a-z])sdb|(^|[^a-z])bad($|[^a-z])|dusche|bath|shower"),
+    ("toilet", r"(^|[^a-z])wc($|[^a-z])|toilet"),
+    ("laundry", r"buanderie|buand|lingerie|waschk|laundry"),
+    ("storage", r"cave|d[ée]barras|(^|[^a-z])deb\.|rangement|r[ée]serve|stock|keller|abstell|storage|grenier|combles|dressing|placard"),
+    ("technical", r"techn|chaufferie|compteur|[ée]lectrique|tgbt|ventil|heizung|poubelle|v[ée]lo|poussette|ordure"),
+    ("circulation", r"hall|couloir|entr[ée]e|d[ée]gagement|circulation|palier|flur|corridor|(^|[^a-z])sas($|[^a-z])|vestiaire|vestibule|diele"),
+    ("office", r"bureau|b[üu]ro|office"),
+    ("meeting", r"r[ée]union|meeting|conf[ée]rence|besprech"),
+]
+# materials of elements the plan does not describe: typical, named "(assumed)" in the model
+ASSUMED_MATERIAL = {"door": "Timber (assumed)", "window": "Glass and aluminium (assumed)", "slab": "Concrete (assumed)",
+                    "column": "Concrete (assumed)", "beam": "Concrete (assumed)", "stair": "Concrete (assumed)",
+                    "ceiling": "Plasterboard (assumed)", "railing": "Glass and steel (assumed)"}
 ROOM_MIN_AREA = 1.0  # m2, smaller unlabelled enclosed spaces are ignored
 ROOM_SIMPLIFY = 0.03  # m, simplification of room outlines
 SLAB_CLOSE = 8.0  # m, gaps up to twice this are bridged: a car park entrance, a ring of rooms round an open hall

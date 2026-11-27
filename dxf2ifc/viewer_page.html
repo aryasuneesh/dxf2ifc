@@ -294,7 +294,7 @@ function describe(mesh, counter = "") {
   const also = QUESTIONS.filter(q => q.ids.length > 1 && q.ids.includes(d.id)).map(q => QUESTIONS.indexOf(q) + 1);
   const rows = [["Type", d.type], ["Name", d.long_name ? `${d.long_name} (${d.name})` : d.name], ["Storey", d.storey],
     ["Confidence", d.confidence == null ? "" : `${d.confidence} (${d.level})`], ["Rule", d.rule], ["Material", d.material], ["Source", d.source],
-    ["Printed area", d.printed_area ? d.printed_area + " m2" : ""]];
+    ["Printed area", d.printed_area ? d.printed_area + " m2" : ""], ...(d.props || [])];
   card({key: d.id, title: label(d), counter, question: "Is this element right?", whyText: why,
     why: why ? esc(why) + (also.length
       ? `<br><span class="hint">Question ${also.join(" and ")} already covers this one with others like it. Answer here only if this one is different.</span>` : "") : "",

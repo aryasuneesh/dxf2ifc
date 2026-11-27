@@ -27,6 +27,7 @@ OUVERTURE_RE = re.compile(r"ouverture\s*:?\s*(\d{3})", re.IGNORECASE)
 HEIGHT_RE = re.compile(r"(?:ouverture|HL)\s*:?\s*(\d{3})", re.IGNORECASE)
 STOREY_RE = re.compile(config.STOREY_WORDS, re.IGNORECASE)
 FIRE_RE = re.compile(config.FIRE_LAYER, re.IGNORECASE)
+ROOM_USE_RES = [(use, re.compile(pattern, re.IGNORECASE)) for use, pattern in config.ROOM_USES]
 ROOM_RE = re.compile(rf"(^|[^a-zà-ü])({config.ROOM_WORDS})", re.IGNORECASE)
 
 
@@ -1125,6 +1126,7 @@ def extract(drawing, roles, elevation=None, height=None) -> dict:
     rooms.sort(key=lambda r: (min(p[0] for p in r["polygon"]), min(p[1] for p in r["polygon"])))
     for i, room in enumerate(rooms):
         room["id"] = f"r{i + 1}"
+        room["use"] = next((use for use, pattern in ROOM_USE_RES if pattern.search(room["name"])), "unknown")
         if room["area_printed_m2"] and room["confidence"] <= 0.30:
             flags.append({"element_id": room["id"], "severity": "review",
                           "reason": f"room area {room['area_m2']} m2 differs from the printed {room['area_printed_m2']} m2"})

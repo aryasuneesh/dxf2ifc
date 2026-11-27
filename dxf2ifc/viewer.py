@@ -52,12 +52,40 @@ def elements(ifc_path) -> list[dict]:
             "level": str(trust.get("ConfidenceLevel", "")).lower(), "confidence": trust.get("Confidence"),
             "status": trust.get("Status", ""), "rule": trust.get("Rule", ""),
             "source": f"{trust.get('SourceFile', '')} / {trust.get('SourceLayer', '')}".strip(" /"),
-            "printed_area": trust.get("PrintedArea"), "material": _material(product),
+            "printed_area": trust.get("PrintedArea"), "material": _material(product), "props": _props(product),
             "v": [round(x, 3) for x in shape.geometry.verts], "f": list(shape.geometry.faces),
             "glass": _glass(shape.geometry) if not product.is_a("IfcSpace") else []})
         if not iterator.next():
             break
     return result
+
+
+UNITS = (("Area", "m²"), ("Volume", "m³"), ("Length", "m"), ("Width", "m"), ("Height", "m"), ("Depth", "m"),
+         ("Perimeter", "m"), ("Thickness", "m"))
+
+
+def _props(product) -> list[list[str]]:
+    """[label, value] of the element's type, use and every standard quantity and property, for the details panel."""
+    rows = []
+    kind = element.get_type(product)
+    if kind is not None:
+        rows.append(["Element type", kind.Name or kind.is_a()])
+    if getattr(product, "ObjectType", None):
+        rows.append(["Use" if product.is_a("IfcSpace") else "Kind", product.ObjectType])
+    for pset, values in sorted(element.get_psets(product).items()):
+        if pset.startswith("SECO_"):
+            continue
+        for key, value in values.items():
+            if key == "id" or value in (None, ""):
+                continue
+            label = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", key).capitalize()
+            if isinstance(value, bool):
+                value = "yes" if value else "no"
+            elif isinstance(value, float):
+                unit = next((u for word, u in UNITS if word in key), "")
+                value = f"{value:.2f} {unit}".strip() if unit or not value.is_integer() else str(int(value))
+            rows.append([label, str(value)])
+    return rows
 
 
 def _material(product) -> str:

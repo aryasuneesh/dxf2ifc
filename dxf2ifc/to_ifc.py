@@ -80,7 +80,7 @@ class _Writer:
         model = api.context.add_context(f, context_type="Model")
         self.body = api.context.add_context(f, context_type="Model", context_identifier="Body",
                                             target_view="MODEL_VIEW", parent=model)
-        self.styles, self.wall_types = {}, {}
+        self.styles, self.wall_types, self.materials, self.opening_types = {}, {}, {}, {}
         for name, (red, green, blue) in config.CONFIDENCE_COLOURS.items():
             for kind, transparency in (("solid", 0.0), ("space", config.SPACE_TRANSPARENCY)):
                 style = api.style.add_style(f, name=f"confidence {name} ({kind})")
@@ -126,6 +126,30 @@ class _Writer:
             "SourceLayer": src.get("layer") or None,
             "SourceHandles": ",".join(src.get("handles", [])[:config.MAX_SOURCE_HANDLES]) or None,
             "PrintedArea": None if printed_area is None else float(printed_area)})
+
+    def qto(self, product, name, quantities):
+        quantities = {key: float(round(value, 4)) for key, value in quantities.items() if value is not None}
+        api.pset.edit_qto(self.f, qto=api.pset.add_qto(self.f, product=product, name=name), properties=quantities)
+
+    def material(self, products, name):
+        """One IfcMaterial per name, shared by every product given."""
+        if name not in self.materials:
+            self.materials[name] = api.material.add_material(self.f, name=name, category=None if self.old else name.split(" (")[0].lower())
+        api.material.assign_material(self.f, products=products, material=self.materials[name])
+
+    def opening_type(self, kind, width, height):
+        """One IfcDoorType or IfcWindowType per size, shared by every door or window of that size."""
+        key = (kind, round(width, 2), round(height, 2))
+        if key not in self.opening_types:
+            label = f"{kind.capitalize()} {round(width * 100)} x {round(height * 100)} cm"
+            ifc_class = ("IfcDoorStyle" if kind == "door" else "IfcWindowStyle") if self.old else ("IfcDoorType" if kind == "door" else "IfcWindowType")
+            entity = api.root.create_entity(self.f, ifc_class=ifc_class, name=label)
+            entity.GlobalId = self.ids.make(self.name, "openingtype", *key)
+            if not self.old:
+                entity.PredefinedType = kind.upper()
+            self.material([entity], config.ASSUMED_MATERIAL[kind])
+            self.opening_types[key] = entity
+        return self.opening_types[key]
 
     def place(self, product, elevation):
         matrix = np.eye(4)
@@ -196,6 +220,12 @@ class _Writer:
                                                    "IsExternal": wall["is_external"]})
             self.trust(product, plan, wall["id"], wall["confidence"], wall["rule"], wall["src"])
             api.type.assign_type(f, related_objects=[product], relating_type=self.wall_type(thickness, wall["src"].get("layer")))
+            footprint = sum(Polygon(p).area for p in wall_pieces[wall["id"]])
+            holes = sum(o["width_m"] * o["height_m"] for o in plan["openings"] if o["wall_id"] == wall["id"])
+            self.qto(product, "Qto_WallBaseQuantities", {
+                "Length": footprint / thickness, "Width": thickness, "Height": height,
+                "GrossSideArea": footprint / thickness * height, "NetSideArea": max(footprint / thickness * height - holes, 0),
+                "GrossVolume": footprint * height, "NetVolume": max(footprint * height - holes * thickness, 0)})
             walls[wall["id"]] = (product, wall)
 
         for wall in plan.get("curved_walls", []):  # the ring between the two arcs, full storey height
@@ -245,6 +275,10 @@ class _Writer:
                     product.OperationType = _door_operation(span, opening["swing"])
                 api.feature.add_filling(f, opening=void, element=product)
                 self.pset(product, f"Pset_{ifc_class[3:]}Common", {"Reference": opening["tag"], "IsExternal": wall["is_external"]})
+                api.type.assign_type(f, related_objects=[product],
+                                     relating_type=self.opening_type(opening["kind"], opening["width_m"], opening["height_m"]))
+                self.qto(product, f"Qto_{ifc_class[3:]}BaseQuantities", {
+                    "Width": opening["width_m"], "Height": opening["height_m"], "Area": opening["width_m"] * opening["height_m"]})
                 self.trust(product, plan, opening["id"], opening["confidence"], opening["rule"], opening["src"])
                 fillings.append(product)
 
@@ -258,6 +292,9 @@ class _Writer:
                      else _steps(stair["polygon"], height))
             steps = [(p, *rest) for outline, *rest in steps for p in _Claims().clip(outline, full)]
             flights.claim(*[p for p, *_ in steps])
+            self.material([product], config.ASSUMED_MATERIAL["stair"])
+            risers = len({round(rest[0] + rest[1], 3) for _, *rest in steps}) or None
+            self.pset(product, "Pset_StairCommon", {"NumberOfRiser": risers, "RiserHeight": risers and round(height / risers, 3)})
             self.body_of(product, steps, stair["confidence"])
             self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"] + ("+numbers" if stair.get("path") else ""), stair["src"])
             stairs.append(product)
@@ -266,13 +303,23 @@ class _Writer:
         for room in plan["rooms"]:
             space = self.root("IfcSpace", room["id"].upper(), *key(room))
             space.LongName = room["name"]
+            use = room.get("use", "unknown")
+            space.ObjectType = use
             if self.old:
-                space.InteriorOrExteriorSpace = "INTERNAL"  # mandatory in IFC2X3
+                space.InteriorOrExteriorSpace = "EXTERNAL" if use == "outdoor" else "INTERNAL"  # mandatory in IFC2X3
+            else:
+                space.PredefinedType = {"outdoor": "EXTERNAL", "parking": "PARKING"}.get(use, "SPACE")
             self.place(space, elevation)
             self.solid(space, room["polygon"], 0.0, height, room["confidence"], kind="space")
             quantities = api.pset.add_qto(f, product=space, name="Qto_SpaceBaseQuantities")
-            api.pset.edit_qto(f, qto=quantities, properties={"NetFloorArea": float(room["area_m2"])})
-            self.pset(space, "Pset_SpaceCommon", {"Reference": room["name"]})
+            clear = height - config.CEILING_T
+            api.pset.edit_qto(f, qto=quantities, properties={
+                "NetFloorArea": float(room["area_m2"]), "GrossFloorArea": float(room["area_m2"]),
+                "NetPerimeter": round(Polygon(room["polygon"]).length, 3), "Height": float(height),
+                "FinishCeilingHeight": float(clear), "NetVolume": round(room["area_m2"] * clear, 3)})
+            self.pset(space, "Pset_SpaceCommon", {"Reference": room["name"], "IsExternal": use == "outdoor",
+                                                  "NetPlannedArea": room["area_printed_m2"] and float(room["area_printed_m2"])})
+            self.pset(space, "Pset_SpaceOccupancyRequirements", {"OccupancyType": use})
             self.trust(space, plan, room["id"], room["confidence"], room["rule"], room["src"], room["area_printed_m2"])
             spaces.append(space)
 
@@ -284,6 +331,10 @@ class _Writer:
                 api.root.remove_product(f, product=product)
                 continue
             self.body_of(product, [(p, height - config.BEAM_DEPTH, config.BEAM_DEPTH) for p in pieces], beam["confidence"])
+            self.material([product], config.ASSUMED_MATERIAL["beam"])
+            area = sum(Polygon(p).area for p in pieces)
+            self.qto(product, "Qto_BeamBaseQuantities", {"Length": area / beam["width_m"], "Width": beam["width_m"],
+                                                         "Height": config.BEAM_DEPTH, "GrossVolume": area * config.BEAM_DEPTH})
             self.trust(product, plan, beam["id"], beam["confidence"], beam["rule"], beam["src"])
             fillings.append(product)
 
@@ -294,6 +345,8 @@ class _Writer:
             pieces = _Claims().clip(room["polygon"], full, top, flights)  # no ceiling over a stairwell
             if pieces:
                 self.body_of(ceiling, [(p, height - config.CEILING_T, config.CEILING_T) for p in pieces], config.CONF_CEILING)
+                self.material([ceiling], config.ASSUMED_MATERIAL["ceiling"])
+                self.qto(ceiling, "Qto_CoveringBaseQuantities", {"Width": config.CEILING_T, "NetArea": sum(Polygon(p).area for p in pieces)})
                 self.trust(ceiling, plan, room["id"] + "-ceiling", config.CONF_CEILING, "assumed_ceiling")
                 fillings.append(ceiling)
             else:
@@ -304,6 +357,8 @@ class _Writer:
                 self.body_of(railing, [(p, *rest) for edge in edges for outline, *rest in _railing(edge)
                                        for p in _Claims().clip(outline, full)], config.CONF_RAILING)
                 self.trust(railing, plan, room["id"] + "-railing", config.CONF_RAILING, "assumed_balustrade", room["src"])
+                self.material([railing], config.ASSUMED_MATERIAL["railing"])
+                self.pset(railing, "Pset_RailingCommon", {"Height": config.RAILING_HEIGHT})
                 fillings.append(railing)
 
         slab_info = plan["slab"]  # under the storey: overlaps nothing
@@ -311,6 +366,11 @@ class _Writer:
         self.place(slab, elevation)
         self.solid(slab, slab_info["outline"], -slab_info["thickness_m"], slab_info["thickness_m"], slab_info["confidence"])
         self.pset(slab, "Pset_SlabCommon", {"IsExternal": False})
+        self.material([slab], config.ASSUMED_MATERIAL["slab"])
+        outline = Polygon(slab_info["outline"])
+        self.qto(slab, "Qto_SlabBaseQuantities", {"Width": slab_info["thickness_m"], "Perimeter": outline.length,
+                                                  "GrossArea": outline.area, "NetArea": outline.area,
+                                                  "GrossVolume": outline.area * slab_info["thickness_m"]})
         self.trust(slab, plan, "slab", slab_info["confidence"], slab_info["rule"])
 
         columns = []
@@ -318,6 +378,9 @@ class _Writer:
             product = self.root("IfcColumn", f"Column {column['id']}" + (" (round)" if column["round"] else ""), *key(column))
             self.place(product, elevation)
             self.body_of(product, [(p, 0.0, height) for p in column_pieces[column["id"]]], column["confidence"])
+            self.material([product], config.ASSUMED_MATERIAL["column"])
+            area = sum(Polygon(p).area for p in column_pieces[column["id"]])
+            self.qto(product, "Qto_ColumnBaseQuantities", {"Length": height, "CrossSectionArea": area, "GrossVolume": area * height})
             self.trust(product, plan, column["id"], column["confidence"], column["rule"], column["src"])
             columns.append(product)
 

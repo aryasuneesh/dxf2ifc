@@ -46,7 +46,7 @@ def elements(ifc_path) -> list[dict]:
                 break
             continue
         trust = element.get_pset(product, "SECO_Trust") or {}
-        container = element.get_container(product)
+        container = element.get_container(product) or element.get_aggregate(product)  # a room is part of its storey
         result.append({
             "id": shape.guid, "type": product.is_a(), "kind": KINDS.get(product.is_a(), "other"),
             "name": product.Name or "", "long_name": getattr(product, "LongName", None) or "", "storey": container.Name if container else "",

@@ -6,7 +6,7 @@ html,body{margin:0;height:100%;font:15px/1.5 Segoe UI,Arial,sans-serif;backgroun
 #view{position:fixed;inset:0} #view canvas{display:block}
 #help{left:50%;top:50%;transform:translate(-50%,-50%);width:480px;max-width:calc(100vw - 24px);z-index:5}
 #help td{padding:1px 10px 1px 0;vertical-align:top} #help td:first-child{white-space:nowrap;font-weight:600}
-#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1c1c1c;color:#fff;padding:6px 14px;border-radius:6px;z-index:6}
+#toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#1c1c1c;color:#fff;padding:6px 14px;border-radius:6px;z-index:6}
 .panel{position:fixed;background:#fff;border:1px solid #c9ccd1;border-radius:8px;padding:10px 14px;box-shadow:0 2px 10px #0002;box-sizing:border-box}
 #tools{top:12px;left:12px;width:290px;max-height:calc(55vh - 18px);overflow:auto}
 #mine{bottom:12px;left:12px;width:290px;max-height:calc(45vh - 18px);overflow:auto}
@@ -35,23 +35,64 @@ td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:
 .why{background:#fff3cd;border-left:4px solid #e0a800;padding:6px 10px;margin:6px 0}
 .hint{color:#555;font-size:13px} #status{font-size:13px;margin:6px 0;padding:6px 8px;border-radius:5px;background:#f1f3f6}
 #status.ok{background:#e6f4ea} #status.warn{background:#fff3cd}
+#toolbar{bottom:12px;left:314px;right:404px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center;padding:6px 8px}
+#toolbar button{padding:3px 9px;font-size:13px} #toolbar button[aria-pressed=true]{background:#1d5fbf;color:#fff;border-color:#1d5fbf}
+#toolbar .sep{width:1px;background:#d0d3d8;margin:2px 3px}
+#gizmo{position:fixed;top:12px;right:404px;width:90px;height:90px;user-select:none;overflow:visible}
+#gizmo .bg{fill:#ffffff99;stroke:#c9ccd1} #gizmo g{cursor:pointer} #gizmo text{font:700 11px Segoe UI,Arial,sans-serif;pointer-events:none}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.tag{position:absolute;left:0;top:0;white-space:nowrap;font-size:12px;line-height:1.25}
+.tag.room{background:#ffffffe8;border:1px solid #c9ccd1;border-radius:5px;padding:2px 7px;text-align:center;box-shadow:0 1px 3px #0002}
+.tag.room b,.tag.room span,.tag.room i{display:block} .tag.room span{color:#333} .tag.room i{color:#5b6270;font-size:11px}
+.tag.grid{width:24px;height:24px;box-sizing:border-box;border-radius:50%;background:#fff;border:2px solid #5c6b80;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+.tag.level{background:#2b2f36;color:#fff;border-radius:4px;padding:2px 8px}
+.tag.dim{background:#1d5fbf;color:#fff;border-radius:3px;padding:0 5px;font-size:11.5px}
+.tag[hidden]{display:none}
+#tip{position:fixed;left:0;top:0;pointer-events:none;background:#1c1c1c;color:#fff;font-size:12.5px;padding:5px 9px;border-radius:5px;max-width:300px;z-index:7}
+#outwrap{max-height:36vh;overflow:auto;border:1px solid #e3e3e3;border-radius:5px;padding:2px 4px;margin-top:4px}
+#outliner .kind{margin-left:14px} #outliner summary{font-weight:400} #outliner>details>summary{font-weight:600}
+.it{display:flex;align-items:center;gap:2px;margin-left:22px} #found .it{margin-left:0}
+.it button{border:0;background:none;padding:1px 4px;text-align:left;font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it.on button{background:#ffe9a8}
+@media (max-width:1100px){#toolbar{left:12px;right:12px;bottom:auto;top:12px} #gizmo{top:auto;bottom:80px;right:12px}}
 @media (max-width:900px){#tools,#mine{width:240px} #planbox,#info{width:300px}}
 </style>
 </head><body>
 <div id="view" role="img" aria-label="3D model of __TITLE__. Use the buttons in the panels to move the view and step through elements."></div>
 <div class="panel" id="help" hidden><b>Keys (as in Blender)</b> <span class="hint">press ? to close</span><table>
-<tr><td>Middle-drag / left-drag</td><td>turn</td></tr><tr><td>Shift + drag, right-drag</td><td>pan</td></tr>
+<tr><td>Left or middle drag</td><td>turn</td></tr><tr><td>Shift + drag, right drag</td><td>pan</td></tr>
 <tr><td>Wheel, + and -</td><td>zoom</td></tr>
-<tr><td>1 / 3 / 7 (numpad or top row)</td><td>front / right / top view</td></tr>
-<tr><td>Alt + 1 / 3 / 7</td><td>back / left / bottom view</td></tr>
-<tr><td>5</td><td>perspective or orthographic</td></tr><tr><td>9</td><td>view from the other side</td></tr>
+<tr><td>Click / Shift + click</td><td>select / add to the selection (totals of lengths, areas, volumes)</td></tr>
+<tr><td>Alt + A</td><td>clear the selection</td></tr>
+<tr><td>1 / 3 / 7 (numpad or top row)</td><td>front / right / top view; Alt for back / left / bottom</td></tr>
+<tr><td>5 / 9</td><td>perspective or orthographic / view from the other side</td></tr>
 <tr><td>4 / 6 / 8 / 2</td><td>turn by 15 degrees</td></tr>
-<tr><td>Home or R</td><td>whole model</td></tr><tr><td>F or numpad .</td><td>frame the selected element</td></tr>
-<tr><td>H / Shift + H / Alt + H</td><td>hide selected / hide all others / show all again</td></tr>
+<tr><td>Home, 0 or R / F</td><td>whole model / frame the selection</td></tr>
+<tr><td>H / Shift + H / Alt + H</td><td>hide selection / hide all others / show all again</td></tr>
 <tr><td>Alt + Z</td><td>X-ray: see through everything</td></tr>
-<tr><td>Alt + B</td><td>cut the model at 1.2 m, like the 2D plan; Page Up / Page Down move the cut</td></tr>
-<tr><td>M</td><td>measure: click two points</td></tr><tr><td>Esc</td><td>stop measuring, clear the measure</td></tr>
-<tr><td>N / P</td><td>next / previous question</td></tr></table></div>
+<tr><td>Shift + B</td><td>section box: drag its round handles to cut from any side</td></tr>
+<tr><td>Alt + B</td><td>cut at 1.2 m, like the 2D plan; Page Up / Page Down move the cut</td></tr>
+<tr><td>Shift + ` (or ~)</td><td>walk: W A S D or arrows, drag to look, Q / E down / up, Shift to run, Esc to stop</td></tr>
+<tr><td>M</td><td>measure: click two points</td></tr>
+<tr><td>L / D / G</td><td>room labels / dimensions of all walls / grid and levels</td></tr>
+<tr><td>Esc</td><td>stop measuring or walking, close this list</td></tr>
+<tr><td>N / P</td><td>next / previous question</td></tr></table>
+<p class="hint">Axis circles at the top right: click X, Y or Z to look from that side.</p></div>
+<div id="labels" aria-hidden="true"></div><div id="tip" hidden></div>
+<svg id="gizmo" viewBox="0 0 90 90" aria-label="Axis views"></svg>
+<div id="toolbar" class="panel" role="toolbar" aria-label="Viewer tools">
+<button data-act="measure" title="Measure between two points (M)">Measure</button>
+<button data-act="section" title="Section box, drag the handles (Shift + B)">Section</button>
+<button data-act="plancut" title="Cut at 1.2 m like the plan (Alt + B)">Plan cut</button>
+<button data-act="walk" title="Walk through at eye height (Shift + `)">Walk</button><span class="sep"></span>
+<button data-act="top" title="Top view (7)">Top</button><button data-act="front" title="Front view (1)">Front</button>
+<button data-act="right" title="Right view (3)">Right</button><button data-act="iso" title="3D view">3D</button>
+<button data-act="ortho" title="Orthographic (5)">Ortho</button><span class="sep"></span>
+<button data-act="fit" title="Whole model (Home)">Fit</button><button data-act="frame" title="Frame the selection (F)">Frame</button><span class="sep"></span>
+<button data-act="hide" title="Hide the selection (H)">Hide</button><button data-act="isolate" title="Show only the selection (Shift + H)">Isolate</button>
+<button data-act="showall" title="Show everything (Alt + H)">Show all</button><button data-act="xray" title="See through (Alt + Z)">X-ray</button><span class="sep"></span>
+<button data-act="rooms" title="Room names, areas and uses (L)">Rooms</button><button data-act="dims" title="Wall lengths (D)">Dims</button>
+<button data-act="grid" title="Structural grid and levels (G)">Grid</button><button data-act="help" title="All keys (?)">?</button></div>
 <div id="toast" hidden></div>
 
 
@@ -65,11 +106,12 @@ td:first-child{color:#555;white-space:nowrap;padding-right:10px} code{font-size:
 <option value="confidence">by how sure the program is</option><option value="type">by element type</option></select></div>
 <div id="legend"></div>
 <div class="hint" id="legendnote"></div>
-<label><input type="checkbox" id="names" checked> room names</label>
-<details><summary>Show or hide</summary><div id="layers"></div>
-<label><input type="checkbox" id="sensors"> simulated room sensors</label></details>
+<h2>Outliner</h2>
+<input type="text" id="find" placeholder="Find an element by name" aria-label="Find an element by name">
+<div id="outwrap"><div id="outliner"></div><div id="found" hidden></div></div>
+<label><input type="checkbox" id="sensors"> simulated room sensors</label>
 <div class="hint">Drag to turn, scroll to zoom, right-drag to pan, click an element.
-Keys: arrows pan, + and - zoom, R whole model, N and P next and previous. Press <b>?</b> for all keys (Blender-style views, hide, X-ray, section, measure).</div>
+Shift + click selects more. Keys as in Blender: press <b>?</b> for the list. The toolbar at the bottom does the same with the mouse.</div>
 </div>
 
 <div id="mine" class="panel" role="region" aria-label="Your feedback">
@@ -140,38 +182,17 @@ for (const item of DATA) {
 const HIDDEN = new Set(["ceilings"]);  // ceilings would cover the rooms seen from above: off until asked for
 for (const [kind, group] of Object.entries(groups)) {
   scene.add(group); group.visible = !HIDDEN.has(kind);
-  const label = document.createElement("label");
-  label.innerHTML = `<input type="checkbox"${group.visible ? " checked" : ""}> ${kind} (${group.children.length})`;
-  label.firstChild.onchange = e => { group.visible = e.target.checked; };
-  $("layers").appendChild(label);
 }
 const centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length() || 10;
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.copy(centre); camera.position.copy(centre).add(new THREE.Vector3(size * 0.25, -size * 0.35, size * 0.3));
+controls.target.copy(centre); camera.position.copy(centre).add(new THREE.Vector3(0.48, -0.67, 0.57).multiplyScalar(size * 1.9));  // whole model in a 30 degree lens
 controls.update();
 const home = camera.position.clone();
 // A faint 1 m grid under the model, for scale.
 { const s = Math.ceil(Math.max(box.max.x - box.min.x, box.max.y - box.min.y) * 1.3 / 10) * 10 || 20;
   const grid = new THREE.GridHelper(s, s, 0xc4c8cf, 0xe1e4e8); grid.rotation.x = Math.PI / 2;
   grid.position.set(centre.x, centre.y, box.min.z - 0.01); scene.add(grid); }
-// Room names (and printed area) float in each room; they stay readable through walls.
-const names = new THREE.Group(); scene.add(names);
 const roomName = d => (d.long_name || "").replace(/\s*\(\s*\)\s*$/, "");  // "cave C.10 ()": the drawing left the brackets empty
-for (const m of meshes.filter(m => m.userData.kind === "rooms" && roomName(m.userData) && !/^Unnamed /.test(m.userData.long_name))) {
-  const d = m.userData, b = new THREE.Box3().setFromObject(m), lines = [roomName(d), d.printed_area ? d.printed_area + " m²" : ""].filter(Boolean);
-  const c = document.createElement("canvas"), x = c.getContext("2d"), px = 40;
-  x.font = `600 ${px}px Segoe UI, Arial, sans-serif`;
-  c.width = Math.ceil(Math.max(...lines.map(l => x.measureText(l).width))) + 32; c.height = lines.length * px * 1.25 + 20;
-  x.fillStyle = "rgba(255,255,255,0.88)"; x.beginPath(); x.roundRect(0, 0, c.width, c.height, 14); x.fill();
-  x.font = `600 ${px}px Segoe UI, Arial, sans-serif`; x.fillStyle = "#1c1c1c"; x.textBaseline = "top";
-  lines.forEach((l, i) => { if (i) x.font = `${px * 0.8}px Segoe UI, Arial, sans-serif`; x.fillText(l, 16, 10 + i * px * 1.25); });
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-  const h = Math.min(0.55, Math.max(0.3, Math.sqrt((b.max.x - b.min.x) * (b.max.y - b.min.y)) / 12));  // bigger room, bigger name
-  sp.scale.set(h * c.width / c.height, h, 1); sp.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z + 1.4);
-  sp.renderOrder = 10; sp.raycast = () => {}; sp.userData.room = m; names.add(sp);
-}
-$("names").onchange = e => { names.visible = e.target.checked; };
 
 // ---------------------------------------------------------------- colours
 // The colours are added by this program, not taken from the drawing: by default they say how sure it is.
@@ -266,16 +287,20 @@ loadHandle().then(h => { handle = h; status(); if (h) writeFile(); });
 status();
 
 // ---------------------------------------------------------------- picking and describing
-let picked = null;
+let picked = null, selection = [];
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(); let down = null;
+function pickAt(e) {  // the element under the pointer; rooms only when nothing else is there; nothing cut away by the section
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
+  const hits = ray.intersectObjects(meshes.filter(m => m.parent.visible && m.visible)).filter(h => inSection(h.point));
+  return hits.find(h => h.object.userData.kind !== "rooms") || hits[0];
+}
 renderer.domElement.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener("pointerup", e => {
-  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
-  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera);
-  const shown = meshes.filter(m => m.parent.visible && m.visible);
-  const hit = ray.intersectObjects(shown).find(h => h.object.userData.kind !== "rooms") || ray.intersectObjects(shown)[0];
+  if (!down || walking || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+  const hit = pickAt(e);
   if (hit && measuring) return measureAt(hit.point);
-  if (hit) select(hit.object.userData.id, false);
+  if (!hit) { if (!e.shiftKey && selection.length) clearSelection(); return; }
+  if (e.shiftKey) toggleInSelection(byId[hit.object.userData.id]); else select(hit.object.userData.id, false);
 });
 const label = d => { const n = d.long_name || d.name, t = d.type.replace("Ifc", ""); if (d.type === "IfcOpeningElement") return `Gap ${n.replace(/^Opening\s*/, "")}`.trim(); return n.toLowerCase().startsWith(t.toLowerCase()) ? n : `${t} ${n}`.trim(); };
 function sensorRows(mesh) {
@@ -346,12 +371,12 @@ const ASSUMED = "Values assumed for the whole storey: ", bullets = items => "<ul
 function ask(q, counter) {
   const ms = q.ids.map(id => byId[id]), n = ms.length, same = new Set(q.whys).size === 1;
   if (!n) {  // nothing to show in 3D: a list
-    light([]); picked = null;
+    light([]); picked = null; selection = []; afterSelect();
     return card({key: q.key, title: "Not in the model", counter, auto: true, whyText: q.whys.join(" | "),
       why: "found on the drawing, but the program could not place them:" + bullets(q.whys),
       question: "Is it acceptable that these are left out, to be added by hand?", labels: ["Acceptable", "Not acceptable", "Not sure"]});
   }
-  ms.forEach(m => { m.parent.visible = true; }); picked = n === 1 ? ms[0] : null; light(ms); frame(ms);
+  ms.forEach(m => { m.parent.visible = true; m.visible = true; }); picked = n === 1 ? ms[0] : null; selection = ms; light(ms); frame(ms); afterSelect();
   if (n === 1 && q.whys[0].startsWith(ASSUMED))
     return card({key: q.key, title: "Assumed storey values", counter, auto: true, whyText: q.whys[0],
       why: "these are not on the drawing, so the program assumed them:" + bullets(q.whys[0].slice(ASSUMED.length).split("; ")),
@@ -368,13 +393,20 @@ function ask(q, counter) {
 // viewer.html#<GlobalId> selects that element: links from the review page or a portal land on it
 function select(id, move = true, counter = "") {
   const mesh = byId[id]; if (!mesh) return false;
-  picked = mesh; light([mesh]); mesh.parent.visible = true; describe(mesh, counter);
+  picked = mesh; selection = [mesh]; light([mesh]); mesh.parent.visible = true; mesh.visible = true; describe(mesh, counter); afterSelect();
   if (move) frame([mesh]);
   return true;
 }
 
 // ---------------------------------------------------------------- buttons and keys (everything works without a mouse)
-const fit = () => { controls.target.copy(centre); camera.position.copy(home); controls.update(); };
+const fit = () => {
+  controls.target.copy(centre); camera.position.copy(home);
+  if (camera.isOrthographicCamera) {  // same picture as the perspective view from there
+    const h = home.distanceTo(centre) * Math.tan(Math.PI / 12), a = innerWidth / innerHeight;
+    Object.assign(camera, {left: -h * a, right: h * a, top: h, bottom: -h, zoom: 1}); camera.updateProjectionMatrix();
+  }
+  controls.update();
+};
 const zoom = f => {
   if (camera.isOrthographicCamera) { camera.zoom /= f; camera.updateProjectionMatrix(); }
   else camera.position.sub(controls.target).multiplyScalar(f).add(controls.target);
@@ -386,7 +418,7 @@ const currentList = () => { const want = $("filter").value; return inCheck() ? Q
   : meshes.filter(m => want === "all" || m.userData.level === want).sort((a, b) => (a.userData.confidence ?? 1) - (b.userData.confidence ?? 1)); };
 const answeredIn = list => list.filter(x => (saved.items[x.key || x.userData.id] || {}).verdict).length;
 function finish(list) {
-  light([]); picked = null; fit();
+  light([]); picked = null; selection = []; afterSelect(); fit();
   const open = list.map((q, i) => (saved.items[q.key] || {}).verdict ? null : i + 1).filter(Boolean);
   $("el").innerHTML = `<h2 style="margin-top:0">${open.length ? `${list.length - open.length} of ${list.length} questions answered` : "All questions answered. Thank you!"}</h2>`
     + (open.length ? `<p>Still open: question ${open.join(", ")}. Press Previous to go back.</p>` : "")
@@ -409,19 +441,19 @@ $("next").onclick = () => stepThrough(1); $("prev").onclick = () => stepThrough(
 $("filter").onchange = () => { step = -1; };
 controls.listenToKeyEvents(window);
 addEventListener("keydown", e => {
-  if (e.target.closest("input,select,textarea")) return;
+  if (e.target.closest("input,select,textarea") || walking) return;
   const act = {"+": () => zoom(0.8), "=": () => zoom(0.8), "-": () => zoom(1.25), r: fit, R: fit,
                n: () => stepThrough(1), N: () => stepThrough(1), p: () => stepThrough(-1), P: () => stepThrough(-1)}[e.key];
   if (act) { act(); e.preventDefault(); }
 });
 // ---------------------------------------------------------------- Blender-style navigation and tools
 controls.mouseButtons = {LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN};  // Shift + drag pans
-const persp = camera, Z = new THREE.Vector3(0, 0, 1);
+const persp = camera, Z = new THREE.Vector3(0, 0, 1), V3 = (x, y, z) => new THREE.Vector3(x, y, z);
 let toastTimer;
-function toast(text) { const t = $("toast"); t.textContent = text; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2500); }
+function toast(text, ms = 2500) { const t = $("toast"); t.textContent = text; t.hidden = false; clearTimeout(toastTimer); if (ms) toastTimer = setTimeout(() => { t.hidden = true; }, ms); }
 function useCamera(next) {
   next.position.copy(camera.position); next.quaternion.copy(camera.quaternion); next.up.copy(Z);
-  camera = next; controls.object = next; controls.update();
+  camera = next; controls.object = next; controls.update(); sync();
 }
 function toggleOrtho() {
   if (camera.isPerspectiveCamera) {
@@ -431,8 +463,9 @@ function toggleOrtho() {
   toast(camera.isOrthographicCamera ? "Orthographic" : "Perspective");
 }
 function view(x, y, z, name) {  // look from direction (x, y, z) at the target, same distance
-  const d = camera.position.distanceTo(controls.target), dir = new THREE.Vector3(x, y || (z ? -1e-4 : 0), z).normalize();
-  camera.position.copy(controls.target).addScaledVector(dir, d); controls.update(); toast(name);
+  if (walking) stopWalk();
+  const d = camera.position.distanceTo(controls.target), dir = V3(x, y || (z ? -1e-4 : 0), z).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d); controls.update(); if (name) toast(name);
 }
 function orbit(yaw, pitch) {
   const off = camera.position.clone().sub(controls.target).applyAxisAngle(Z, yaw);
@@ -440,9 +473,43 @@ function orbit(yaw, pitch) {
   camera.position.copy(controls.target).add(off); controls.update();
 }
 function flip() { camera.position.sub(controls.target).negate().add(controls.target); controls.update(); }
+
+// ---- selection: click one, Shift + click adds or removes, click empty space clears
+function afterSelect() { markOutliner(); refreshDims(); sync(); }
+function clearSelection() {
+  selection = []; picked = null; light([]); afterSelect();
+  $("el").innerHTML = '<p class="hint">Nothing selected. Click an element, Shift + click to add more, or press Next for the questions.</p>';
+}
+function toggleInSelection(mesh) {
+  selection = selection.includes(mesh) ? selection.filter(m => m !== mesh) : [...selection, mesh];
+  picked = selection.length === 1 ? selection[0] : null; light(selection);
+  if (selection.length === 1) describe(selection[0]); else if (selection.length) summarize(selection); else return clearSelection();
+  afterSelect();
+}
+const QTY = /^(-?[\d.]+) (m|m²|m³)$/;
+function summarize(ms) {
+  const types = {}, sums = {};
+  for (const m of ms) {
+    const d = m.userData, t = NOUNS[d.type] || d.type.replace("Ifc", "").toLowerCase();
+    types[t] = (types[t] || 0) + 1;
+    for (const [k, v] of d.props || []) { const q = QTY.exec(v); if (q && /area|volume|length|perimeter/i.test(k)) sums[`${k} (${q[2]})`] = (sums[`${k} (${q[2]})`] || 0) + +q[1]; }
+  }
+  $("el").innerHTML = `<h2 style="margin-top:0">${ms.length} elements selected</h2><table>`
+    + Object.entries(types).map(([t, n]) => `<tr><td>${esc(t)}</td><td>${n}</td></tr>`).join("") + "</table>"
+    + (Object.keys(sums).length ? "<h2>Totals</h2><table>" + Object.entries(sums).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.toFixed(2)}</td></tr>`).join("") + "</table>" : "")
+    + '<div class="row"><button id="s-frame">Frame</button><button id="s-iso">Isolate</button><button id="s-hide">Hide</button><button id="s-clear">Clear</button></div>'
+    + '<p class="hint">Shift + click adds or removes an element. Click empty space to clear.</p>';
+  $("s-frame").onclick = () => frame(selection); $("s-iso").onclick = isolate; $("s-hide").onclick = hideSelected; $("s-clear").onclick = clearSelection;
+}
+
+// ---- hide, isolate, show all
 const hidden = new Set();
-function hide(ms) { ms.forEach(m => { m.visible = false; hidden.add(m); }); if (ms.includes(picked)) { picked = null; light([]); } }
-function showAll() { hidden.forEach(m => { m.visible = true; }); hidden.clear(); toast("Everything shown again"); }
+function hide(ms) { ms.forEach(m => { m.visible = false; hidden.add(m); }); if (selection.some(m => !m.visible)) { selection = selection.filter(m => m.visible); picked = selection.length === 1 ? selection[0] : null; light(selection); } syncOutliner(); }
+function hideSelected() { if (selection.length) { hide(selection); toast("Hidden; Alt + H shows all"); } }
+function isolate() { if (selection.length) { hide(meshes.filter(m => !selection.includes(m) && m.visible)); toast("Only the selection; Alt + H shows all"); } }
+function showAll() { hidden.forEach(m => { m.visible = true; }); hidden.clear(); for (const [k, g] of Object.entries(groups)) if (k !== "ceilings") g.visible = true; syncOutliner(); toast("Everything shown again"); }
+
+// ---- X-ray
 let xray = false;
 function toggleXray() {
   xray = !xray;
@@ -452,17 +519,68 @@ function toggleXray() {
     Object.assign(mat, xray ? {opacity: Math.min(u.opacity, 0.25), transparent: true, depthWrite: false} : u);
     mat.needsUpdate = true;
   }
-  toast(xray ? "X-ray on" : "X-ray off");
+  toast(xray ? "X-ray on" : "X-ray off"); sync();
 }
-// Section: a horizontal cut through the model, 1.2 m above the lowest floor by default, like a 2D plan
+
+// ---- section box: six faces, drag the round handles; Alt + B is the plan cut at 1.2 m
 const floorZ = Math.min(...meshes.filter(m => m.userData.kind === "walls").map(m => new THREE.Box3().setFromObject(m).min.z), box.max.z);
-const cut = new THREE.Plane(new THREE.Vector3(0, 0, -1), floorZ + 1.2);
-function toggleCut() { renderer.clippingPlanes = renderer.clippingPlanes.length ? [] : [cut]; toast(renderer.clippingPlanes.length ? `Cut at ${(cut.constant - floorZ).toFixed(2)} m` : "Cut off"); }
-function moveCut(dz) { if (!renderer.clippingPlanes.length) toggleCut(); cut.constant += dz; toast(`Cut at ${(cut.constant - floorZ).toFixed(2)} m`); }
-// Measure: two clicks on the model, the distance and its parts along x, y and z
+const secBox = box.clone().expandByScalar(0.05), planes = [0, 1, 2, 3, 4, 5].map(() => new THREE.Plane());
+let sectionOn = false;
+renderer.localClippingEnabled = true;
+const clipped = [...new Set(meshes.flatMap(m => [m.material, ...m.children.map(c => c.material)]))];
+const boxLines = new THREE.Box3Helper(secBox, 0xd81b60); boxLines.visible = false; scene.add(boxLines);
+const AXES = ["x", "y", "z"], handles = [];
+for (let i = 0; i < 6; i++) {
+  const h = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({color: 0xd81b60, depthTest: false, transparent: true, opacity: 0.85}));
+  h.renderOrder = 11; h.visible = false; h.userData = {axis: AXES[i >> 1], max: i % 2 === 1}; handles.push(h); scene.add(h);
+}
+function updateSection() {
+  const b = secBox, c = b.getCenter(new THREE.Vector3());
+  [[V3(1, 0, 0), -b.min.x], [V3(-1, 0, 0), b.max.x], [V3(0, 1, 0), -b.min.y], [V3(0, -1, 0), b.max.y], [V3(0, 0, 1), -b.min.z], [V3(0, 0, -1), b.max.z]]
+    .forEach(([n, d], i) => planes[i].set(n, d));
+  handles.forEach(h => { h.position.copy(c); h.position[h.userData.axis] = (h.userData.max ? b.max : b.min)[h.userData.axis]; h.visible = sectionOn; });
+  boxLines.visible = sectionOn;
+  for (const mat of clipped) { mat.clippingPlanes = sectionOn ? planes : null; mat.needsUpdate = true; }
+  sync();
+}
+function toggleSection(force) {
+  sectionOn = force ?? !sectionOn;
+  if (sectionOn && force === undefined) secBox.copy(box).expandByScalar(0.05);
+  updateSection(); toast(sectionOn ? "Section box: drag the round handles to cut" : "Section off");
+}
+function planCut() {  // like the 2D plan: everything above 1.2 m taken off
+  if (sectionOn && Math.abs(secBox.max.z - floorZ - 1.2) < 1e-6) return toggleSection(false);
+  secBox.copy(box).expandByScalar(0.05); secBox.max.z = floorZ + 1.2; sectionOn = true; updateSection();
+  toast("Cut at 1.20 m above the floor; Page Up / Page Down move it");
+}
+function moveCut(dz) { if (!sectionOn) planCut(); secBox.max.z = Math.max(secBox.min.z + 0.1, secBox.max.z + dz); updateSection(); toast(`Cut at ${(secBox.max.z - floorZ).toFixed(2)} m`); }
+let dragging = null;
+const rayAt = e => { mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera); return ray.ray; };
+renderer.domElement.addEventListener("pointerdown", e => {  // capture: runs before the orbit controls
+  if (!sectionOn || walking || e.button !== 0) return;
+  rayAt(e); const hit = ray.intersectObjects(handles, false)[0];
+  if (!hit) return;
+  e.stopImmediatePropagation(); renderer.domElement.setPointerCapture(e.pointerId);
+  const {axis, max} = hit.object.userData;
+  dragging = {axis, max, start: hit.object.position.clone(), value: (max ? secBox.max : secBox.min)[axis]};
+}, {capture: true});
+renderer.domElement.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  const r = rayAt(e), a = V3(0, 0, 0); a[dragging.axis] = 1;
+  const w = dragging.start.clone().sub(r.origin), b = a.dot(r.direction), den = 1 - b * b;
+  if (den < 1e-4) return;  // looking straight along the axis
+  const s = (b * r.direction.dot(w) - a.dot(w)) / den, v = dragging.value + s, ax = dragging.axis;
+  if (dragging.max) secBox.max[ax] = Math.max(v, secBox.min[ax] + 0.1); else secBox.min[ax] = Math.min(v, secBox.max[ax] - 0.1);
+  updateSection();
+});
+renderer.domElement.addEventListener("pointerup", () => { if (dragging) { dragging = null; down = null; } }, {capture: true});
+const inSection = p => !sectionOn || secBox.containsPoint(p);
+
+// ---- measure: two clicks on the model, the distance and its parts along x, y and z
 let measuring = false, measurePts = [];
 const measureGroup = new THREE.Group(); scene.add(measureGroup);
 function clearMeasure() { measureGroup.clear(); measurePts = []; }
+function toggleMeasure() { measuring = !measuring; if (!measuring) clearMeasure(); toast(measuring ? "Measure: click the first point" : "Measure off"); sync(); }
 function measureAt(p) {
   if (measurePts.length === 2) clearMeasure();
   measurePts.push(p.clone());
@@ -472,11 +590,238 @@ function measureAt(p) {
   const [a, b] = measurePts, line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]),
     new THREE.LineBasicMaterial({color: 0xd81b60, depthTest: false}));
   line.renderOrder = 9; measureGroup.add(line);
-  const d = b.clone().sub(a), text = `${d.length().toFixed(2)} m (x ${Math.abs(d.x).toFixed(2)}, y ${Math.abs(d.y).toFixed(2)}, z ${Math.abs(d.z).toFixed(2)})`;
-  $("toast").textContent = text; $("toast").hidden = false; clearTimeout(toastTimer);
+  const d = b.clone().sub(a);
+  toast(`${d.length().toFixed(2)} m (x ${Math.abs(d.x).toFixed(2)}, y ${Math.abs(d.y).toFixed(2)}, z ${Math.abs(d.z).toFixed(2)})`, 0);
 }
+
+// ---- walk: first person at eye height, W A S D to move, drag to look, Q / E down and up, Shift to run
+let walking = false, yaw = 0, pitch = 0, lookFrom = null, last = 0;
+const held = new Set();
+function startWalk() {
+  if (camera.isOrthographicCamera) useCamera(persp);
+  const dir = controls.target.clone().sub(camera.position);
+  yaw = Math.atan2(dir.y, dir.x); pitch = 0; walking = true; controls.enabled = false;
+  camera.position.set(controls.target.x - 2 * Math.cos(yaw), controls.target.y - 2 * Math.sin(yaw), floorZ + 1.6);
+  toast("Walk: W A S D or arrows to move, drag to look, Q / E down / up, Shift to run, Esc to stop", 6000); sync();
+}
+function stopWalk() {
+  walking = false; held.clear(); controls.enabled = true;
+  controls.target.copy(camera.position).add(V3(Math.cos(yaw) * Math.cos(pitch), Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch)).multiplyScalar(3));
+  controls.update(); toast("Walk off"); sync();
+}
+function walkStep(t) {
+  const dt = Math.min(0.1, (t - last) / 1000); last = t;
+  if (!walking) return;
+  const f = V3(Math.cos(yaw), Math.sin(yaw), 0), r = V3(Math.sin(yaw), -Math.cos(yaw), 0), v = new THREE.Vector3();
+  if (held.has("KeyW") || held.has("ArrowUp")) v.add(f); if (held.has("KeyS") || held.has("ArrowDown")) v.sub(f);
+  if (held.has("KeyD") || held.has("ArrowRight")) v.add(r); if (held.has("KeyA") || held.has("ArrowLeft")) v.sub(r);
+  if (held.has("KeyE")) v.z += 1; if (held.has("KeyQ")) v.z -= 1;
+  if (v.lengthSq()) camera.position.addScaledVector(v.normalize(), (held.has("ShiftLeft") || held.has("ShiftRight") ? 4.5 : 1.5) * dt);
+  camera.lookAt(camera.position.clone().add(V3(Math.cos(yaw) * Math.cos(pitch), Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch))));
+}
+renderer.domElement.addEventListener("pointerdown", e => { if (walking) lookFrom = [e.clientX, e.clientY]; });
+addEventListener("pointermove", e => {
+  if (!walking || !lookFrom) return;
+  yaw -= (e.clientX - lookFrom[0]) * 0.004; pitch = Math.max(-1.4, Math.min(1.4, pitch - (e.clientY - lookFrom[1]) * 0.004));
+  lookFrom = [e.clientX, e.clientY];
+});
+addEventListener("pointerup", () => { lookFrom = null; });
+addEventListener("keyup", e => held.delete(e.code));
+addEventListener("blur", () => held.clear());
+
+// ---- labels drawn over the model: room name, area and use; grid bubbles; storey levels; dimensions
+const overlay = $("labels"), tags = [], tmp = new THREE.Vector3();
+let showRooms = true, showGrid = SETUP.grid.length > 0, showDims = false;
+function tag(html, cls, pos, prio, visible) {
+  const el = document.createElement("div"); el.className = "tag " + cls; el.innerHTML = html; el.hidden = true; overlay.append(el);
+  const t = {el, pos, prio, visible, w: 0, h: 0, cut: cls !== "dim"}; tags.push(t); return t;  // dimensions show through a section
+}
+const propOf = (d, re) => ((d.props || []).find(([k]) => re.test(k)) || [])[1];
+for (const m of meshes.filter(m => m.userData.kind === "rooms")) {
+  const d = m.userData, b = new THREE.Box3().setFromObject(m), name = roomName(d);
+  if (!name || /^Unnamed /.test(d.long_name)) continue;
+  const area = d.printed_area ? `${d.printed_area} m²` : (propOf(d, /^net floor area/i) || ""), use = propOf(d, /^use$/i);
+  tag(`<b>${esc(name)}</b>${area ? `<span>${esc(area)}</span>` : ""}${use && use !== "space" ? `<i>${esc(use)}</i>` : ""}`, "room",
+      V3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z + 1.0), (b.max.x - b.min.x) * (b.max.y - b.min.y),
+      () => showRooms && m.visible && m.parent.visible);
+}
+const gridGroup = new THREE.Group(); scene.add(gridGroup);
+const gridMat = new THREE.LineDashedMaterial({color: 0x5c6b80, dashSize: 0.6, gapSize: 0.3, transparent: true, opacity: 0.7});
+for (const g of SETUP.grid) {
+  const a = V3(...g.a), b = V3(...g.b); a.z = b.z = Math.max(a.z, floorZ) + 0.02;
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), gridMat); line.computeLineDistances(); gridGroup.add(line);
+  if (g.tag) for (const p of [a, b]) tag(esc(g.tag), "grid", p, 1e6, () => showGrid);
+}
+for (const s of SETUP.storeys) tag(`<b>${esc(s.name)}</b> ${s.elevation >= 0 ? "+" : ""}${s.elevation.toFixed(2)} m`, "level",
+  V3(box.min.x, box.min.y, s.elevation), 2e6, () => showGrid || !SETUP.grid.length);
+// dimensions: the element's own long and short directions (principal axes of its outline), so slanted walls measure right
+const dimGroup = new THREE.Group(), dimMat = new THREE.LineBasicMaterial({color: 0x1d5fbf, depthTest: false}), dimTags = [];
+dimGroup.renderOrder = 12; scene.add(dimGroup);
+function extents(m) {
+  const p = m.geometry.attributes.position.array, n = p.length / 3;
+  let mx = 0, my = 0, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < n; i++) { mx += p[3 * i]; my += p[3 * i + 1]; z0 = Math.min(z0, p[3 * i + 2]); z1 = Math.max(z1, p[3 * i + 2]); }
+  mx /= n; my /= n;
+  let xx = 0, xy = 0, yy = 0;
+  for (let i = 0; i < n; i++) { const x = p[3 * i] - mx, y = p[3 * i + 1] - my; xx += x * x; xy += x * y; yy += y * y; }
+  const t = 0.5 * Math.atan2(2 * xy, xx - yy), u = [Math.cos(t), Math.sin(t)], v = [-u[1], u[0]];
+  let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+  for (let i = 0; i < n; i++) { const x = p[3 * i] - mx, y = p[3 * i + 1] - my, a = x * u[0] + y * u[1], b = x * v[0] + y * v[1];
+    a0 = Math.min(a0, a); a1 = Math.max(a1, a); b0 = Math.min(b0, b); b1 = Math.max(b1, b); }
+  return {mx, my, u, v, a0, a1, b0, b1, z0, z1};
+}
+const at = (e, a, b, z) => V3(e.mx + a * e.u[0] + b * e.v[0], e.my + a * e.u[1] + b * e.v[1], z);
+function dimLine(p, q, side, text, prio) {  // a dimension line from p to q with end ticks; side: unit offset direction for ticks
+  const tick = side.clone().multiplyScalar(0.15);
+  dimGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(
+    [p, q, p.clone().sub(tick), p.clone().add(tick), q.clone().sub(tick), q.clone().add(tick)]), dimMat));
+  dimTags.push(tag(text, "dim", p.clone().add(q).multiplyScalar(0.5), prio, () => true));
+}
+function dimsFor(m, full) {
+  const e = extents(m), L = e.a1 - e.a0, W = e.b1 - e.b0, H = e.z1 - e.z0, z = e.z1 + 0.05, off = 0.35;
+  const sideV = V3(e.v[0], e.v[1], 0), sideU = V3(e.u[0], e.u[1], 0);
+  if (L > 0.05) dimLine(at(e, e.a0, e.b1 + off, z), at(e, e.a1, e.b1 + off, z), sideV, `${L.toFixed(2)} m`, full ? 5e6 : L);
+  if (full && W > 0.05) dimLine(at(e, e.a1 + off, e.b0, z), at(e, e.a1 + off, e.b1, z), sideU, `${W.toFixed(2)} m`, 5e6);
+  if (full && H > 0.05) dimLine(at(e, e.a1 + off, e.b1 + off, e.z0), at(e, e.a1 + off, e.b1 + off, e.z1), sideU, `h ${H.toFixed(2)} m`, 5e6);
+}
+function refreshDims() {
+  dimGroup.clear(); for (const t of dimTags.splice(0)) { t.el.remove(); tags.splice(tags.indexOf(t), 1); }
+  if (showDims) for (const m of meshes) if (m.userData.kind === "walls" && m.visible && m.parent.visible && !selection.includes(m)) dimsFor(m, false);
+  for (const m of selection.slice(0, 20)) dimsFor(m, true);
+  tags.sort((a, b) => b.prio - a.prio);
+}
+function drawTags() {
+  const placed = [], W = innerWidth, H = innerHeight;
+  for (const t of tags) {
+    let show = t.visible() && (!t.cut || inSection(t.pos));
+    if (show) { tmp.copy(t.pos).project(camera); show = tmp.z < 1 && tmp.z > -1 && Math.abs(tmp.x) < 1.05 && Math.abs(tmp.y) < 1.05; }
+    if (show) {
+      if (t.el.hidden) { t.el.hidden = false; t.w = t.el.offsetWidth; t.h = t.el.offsetHeight; }
+      const x = (tmp.x + 1) / 2 * W - t.w / 2, y = (1 - tmp.y) / 2 * H - t.h / 2;
+      if (placed.some(r => x < r[2] && x + t.w > r[0] && y < r[3] && y + t.h > r[1])) show = false;  // declutter: the bigger room wins
+      else { placed.push([x - 2, y - 2, x + t.w + 2, y + t.h + 2]); t.el.style.transform = `translate(${x | 0}px,${y | 0}px)`; }
+    }
+    if (!show && !t.el.hidden) t.el.hidden = true;
+  }
+}
+tags.sort((a, b) => b.prio - a.prio);
+
+// ---- hover: a short tag at the cursor with what the element is and its main sizes
+const tip = $("tip");
+let hovered = null, hoverEvent = null;
+renderer.domElement.addEventListener("pointermove", e => { hoverEvent = e.buttons || walking || dragging ? null : e; if (!hoverEvent) tip.hidden = true; });
+renderer.domElement.addEventListener("pointerleave", () => { hoverEvent = null; tip.hidden = true; });
+function hover() {
+  const e = hoverEvent; hoverEvent = null;
+  if (!e) return;
+  const hit = pickAt(e), mesh = hit && byId[hit.object.userData.id];
+  if (hovered && hovered !== mesh && !lit.includes(hovered)) hovered.material.emissive.setHex(0);
+  hovered = mesh;
+  if (!mesh) { tip.hidden = true; return; }
+  if (!lit.includes(mesh)) mesh.material.emissive.setHex(0x16325c);
+  const d = mesh.userData, sizes = (d.props || []).filter(([, v]) => QTY.test(v)).slice(0, 3);
+  tip.innerHTML = `<b>${esc(label(d))}</b><br>${esc(d.type)}${d.material ? " · " + esc(d.material) : ""}`
+    + sizes.map(([k, v]) => `<br>${esc(k)}: ${esc(v)}`).join("");
+  tip.hidden = false;
+  tip.style.transform = `translate(${Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8)}px,${Math.min(e.clientY + 16, innerHeight - tip.offsetHeight - 8)}px)`;
+}
+
+// ---- outliner: storey, kind of element, element; the box shows or hides, the name selects (Shift adds)
+const tree = $("outliner"), rowOf = new Map(), kindBoxes = [];
+const byStorey = {};
+for (const m of meshes) ((byStorey[m.userData.storey || "Model"] ||= {})[m.userData.kind] ||= []).push(m);
+const shownOf = ms => ms.some(m => m.visible && m.parent.visible);
+function setShown(ms, on) { ms.forEach(m => { m.visible = on; if (on) { m.parent.visible = true; hidden.delete(m); } else hidden.add(m); }); syncOutliner(); }
+function itemRow(m) {
+  const row = document.createElement("div"), d = m.userData; row.className = "it";
+  row.innerHTML = `<input type="checkbox" aria-label="Show ${esc(label(d))}"><button type="button">${esc(label(d))}</button>`;
+  row.firstChild.checked = m.visible && m.parent.visible;
+  row.firstChild.onchange = e => setShown([m], e.target.checked);
+  row.lastChild.onclick = e => e.shiftKey ? toggleInSelection(m) : select(d.id, true);
+  rowOf.set(m, row); return row;
+}
+for (const [storey, kinds] of Object.entries(byStorey)) {
+  const st = document.createElement("details"); st.open = true;
+  const all = Object.values(kinds).flat();
+  st.innerHTML = `<summary><input type="checkbox" aria-label="Show storey ${esc(storey)}"> ${esc(storey)} <span class="hint">(${all.length})</span></summary>`;
+  const stBox = st.querySelector("input"); stBox.onchange = e => setShown(all, e.target.checked); kindBoxes.push([stBox, all]);
+  for (const [kind, ms] of Object.entries(kinds).sort()) {
+    const kd = document.createElement("details"); kd.className = "kind";
+    kd.innerHTML = `<summary><input type="checkbox" aria-label="Show ${esc(kind)}"> <span class="sw" style="background:${TYPE_COLOURS[kind] || "#9aa0a6"}"></span>${esc(kind)} <span class="hint">(${ms.length})</span></summary><div></div>`;
+    const kBox = kd.querySelector("input"); kBox.onchange = e => setShown(ms, e.target.checked); kindBoxes.push([kBox, ms]);
+    kd.ontoggle = () => { const list = kd.lastChild; if (kd.open && !list.childElementCount) { ms.forEach(m => list.append(itemRow(m))); markOutliner(false); } };
+    kd.dataset.kind = kind; st.append(kd);
+  }
+  tree.append(st);
+}
+function syncOutliner() {
+  for (const [b, ms] of kindBoxes) { const on = ms.filter(m => m.visible && m.parent.visible).length; b.checked = on > 0; b.indeterminate = on > 0 && on < ms.length; }
+  for (const [m, row] of rowOf) row.firstChild.checked = m.visible && m.parent.visible;
+  refreshDims();
+}
+function markOutliner(reveal = true) {
+  tree.querySelectorAll(".it.on").forEach(r => r.classList.remove("on"));
+  for (const m of selection) {
+    if (!rowOf.get(m) && reveal && selection.length === 1) {
+      const kd = [...tree.querySelectorAll("details.kind")].find(k => k.dataset.kind === m.userData.kind && k.parentElement.querySelector("summary").textContent.includes(m.userData.storey || "Model"));
+      if (kd) { kd.open = true; kd.ontoggle(); }
+    }
+    const row = rowOf.get(m); if (row) { row.classList.add("on"); if (reveal && selection.length === 1) row.scrollIntoView({block: "nearest"}); }
+  }
+}
+$("find").oninput = e => {  // search by name: a flat list of matches instead of the tree
+  const q = e.target.value.trim().toLowerCase(), out = $("found");
+  tree.hidden = !!q; out.hidden = !q; out.innerHTML = "";
+  if (!q) return;
+  const hits = meshes.filter(m => label(m.userData).toLowerCase().includes(q) || (m.userData.long_name || "").toLowerCase().includes(q)).slice(0, 200);
+  hits.forEach(m => { const row = itemRow(m); rowOf.delete(m); out.append(row); });
+  if (!hits.length) out.innerHTML = '<p class="hint">No element with that name.</p>';
+};
+syncOutliner();
+
+// ---- toolbar and axis gizmo: everything the keys do, with the mouse
+const ACTS = {
+  measure: toggleMeasure, section: () => toggleSection(), plancut: planCut, walk: () => walking ? stopWalk() : startWalk(),
+  top: () => view(0, 0, 1, "Top"), front: () => view(0, -1, 0, "Front"), right: () => view(1, 0, 0, "Right"),
+  iso: () => view(0.6, -0.85, 0.75, "3D view"), ortho: toggleOrtho, fit: () => { if (walking) stopWalk(); fit(); },
+  frame: () => selection.length ? frame(selection) : fit(), hide: hideSelected, isolate, showall: showAll, xray: toggleXray,
+  rooms: () => { showRooms = !showRooms; sync(); }, dims: () => { showDims = !showDims; refreshDims(); sync(); },
+  grid: () => { showGrid = !showGrid; gridGroup.visible = showGrid; sync(); }, help: () => { $("help").hidden = !$("help").hidden; },
+};
+const STATE = {measure: () => measuring, section: () => sectionOn, walk: () => walking, ortho: () => camera.isOrthographicCamera,
+  xray: () => xray, rooms: () => showRooms, dims: () => showDims, grid: () => showGrid};
+document.querySelectorAll("#toolbar [data-act]").forEach(b => { b.onclick = () => { ACTS[b.dataset.act](); b.blur(); }; });
+$("toolbar").querySelector('[data-act="grid"]').hidden = !SETUP.grid.length;
+gridGroup.visible = showGrid;
+function sync() { document.querySelectorAll("#toolbar [data-act]").forEach(b => { if (STATE[b.dataset.act]) b.setAttribute("aria-pressed", STATE[b.dataset.act]()); }); }
+const gizmo = $("gizmo"), GZ = [["X", V3(1, 0, 0), "#d33f49"], ["Y", V3(0, 1, 0), "#5c9e31"], ["Z", V3(0, 0, 1), "#2f6fd6"]];
+gizmo.innerHTML = '<circle cx="45" cy="45" r="43" class="bg"/>' + GZ.flatMap(([n, , c]) => [
+  `<line data-n="${n}" stroke="${c}" stroke-width="2.5" x1="45" y1="45"/>`,
+  `<g data-n="${n}" data-s="1" role="button" tabindex="0" aria-label="View from +${n}"><circle r="9" fill="${c}"/><text text-anchor="middle" dy="4" fill="#fff">${n}</text></g>`,
+  `<g data-n="${n}" data-s="-1" role="button" tabindex="0" aria-label="View from -${n}"><circle r="7" fill="#fff" stroke="${c}" stroke-width="2"/></g>`]).join("");
+gizmo.querySelectorAll("g").forEach(g => {
+  const go = () => { const a = GZ.find(x => x[0] === g.dataset.n)[1].clone().multiplyScalar(+g.dataset.s); view(a.x, a.y, a.z, `${g.dataset.s > 0 ? "+" : "-"}${g.dataset.n}`); };
+  g.onclick = go; g.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+});
+const inv = new THREE.Quaternion();
+function drawGizmo() {
+  inv.copy(camera.quaternion).invert();
+  const order = [];
+  for (const [n, a] of GZ) for (const s of [1, -1]) {
+    const p = a.clone().multiplyScalar(s).applyQuaternion(inv), x = 45 + p.x * 30, y = 45 - p.y * 30;
+    const g = gizmo.querySelector(`g[data-n="${n}"][data-s="${s}"]`); g.setAttribute("transform", `translate(${x.toFixed(1)},${y.toFixed(1)})`); order.push([p.z, g]);
+    if (s > 0) { const l = gizmo.querySelector(`line[data-n="${n}"]`); l.setAttribute("x2", x.toFixed(1)); l.setAttribute("y2", y.toFixed(1)); }
+  }
+  order.sort((a, b) => a[0] - b[0]).forEach(([, g]) => gizmo.append(g));  // nearer drawn last, on top
+}
+
+// ---- keys (as in Blender; press ? for the list)
 addEventListener("keydown", e => {
   if (e.target.closest("input,select,textarea") || e.ctrlKey || e.metaKey) return;
+  if (walking) {
+    if (e.key === "Escape" || e.code === "Backquote") stopWalk(); else held.add(e.code);
+    return e.preventDefault();
+  }
   const digit = (e.code.match(/^(?:Numpad|Digit)(\d)$/) || [])[1], alt = e.altKey, k = e.key;
   const act = digit === "1" ? () => alt ? view(0, 1, 0, "Back") : view(0, -1, 0, "Front")
     : digit === "3" ? () => alt ? view(-1, 0, 0, "Left") : view(1, 0, 0, "Right")
@@ -485,34 +830,41 @@ addEventListener("keydown", e => {
     : digit === "4" ? () => orbit(-Math.PI / 12, 0) : digit === "6" ? () => orbit(Math.PI / 12, 0)
     : digit === "8" ? () => orbit(0, -Math.PI / 12) : digit === "2" ? () => orbit(0, Math.PI / 12)
     : digit === "0" || k === "Home" ? fit
-    : (k === "f" || k === "F" || e.code === "NumpadDecimal") ? () => picked ? frame([picked]) : fit()
+    : (k === "f" || k === "F" || e.code === "NumpadDecimal") ? ACTS.frame
+    : (e.code === "Backquote" && e.shiftKey) || k === "~" ? startWalk
     : (e.code === "KeyH" && alt) ? showAll
-    : (e.code === "KeyH" && e.shiftKey) ? () => { if (picked) { hide(meshes.filter(m => m !== picked && m.visible)); toast("Only the selected element; Alt + H shows all"); } }
-    : e.code === "KeyH" ? () => { if (picked) { hide([picked]); toast("Hidden; Alt + H shows all"); } }
+    : (e.code === "KeyH" && e.shiftKey) ? isolate
+    : e.code === "KeyH" ? hideSelected
+    : (e.code === "KeyA" && alt) ? clearSelection
     : (e.code === "KeyZ" && alt) ? toggleXray
-    : (e.code === "KeyB" && alt) ? toggleCut
+    : (e.code === "KeyB" && alt) ? planCut
+    : (e.code === "KeyB" && e.shiftKey) ? () => toggleSection()
     : k === "PageUp" ? () => moveCut(0.25) : k === "PageDown" ? () => moveCut(-0.25)
-    : e.code === "KeyM" ? () => { measuring = !measuring; if (!measuring) clearMeasure(); toast(measuring ? "Measure: click the first point" : "Measure off"); }
-    : k === "Escape" ? () => { measuring = false; clearMeasure(); $("toast").hidden = true; $("help").hidden = true; }
-    : k === "?" ? () => { $("help").hidden = !$("help").hidden; } : null;
+    : e.code === "KeyM" ? toggleMeasure
+    : e.code === "KeyL" ? ACTS.rooms : e.code === "KeyD" ? ACTS.dims : e.code === "KeyG" ? ACTS.grid
+    : k === "Escape" ? () => { measuring = false; clearMeasure(); $("toast").hidden = true; $("help").hidden = true; sync(); }
+    : k === "?" ? ACTS.help : null;
   if (act) { act(); e.preventDefault(); }
 });
 const plan = $("planimg");
 if (plan) plan.onclick = () => $("planbox").classList.toggle("big"); else $("planbox").hidden = true;
-window.viewer = { select, meshes, camera, controls, THREE, view };  // for scripted views and screenshots
+window.viewer = { select, meshes, camera, controls, THREE, view, handles, secBox, toggleSection };  // for scripted views and screenshots
 const fromHash = () => location.hash.length > 1 && select(decodeURIComponent(location.hash.slice(1)));
 addEventListener("hashchange", fromHash); fromHash();
 addEventListener("resize", () => {
   persp.aspect = innerWidth / innerHeight; persp.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
   if (camera.isOrthographicCamera) { const h = camera.top; camera.left = -h * persp.aspect; camera.right = h * persp.aspect; camera.updateProjectionMatrix(); }
 });
+updateSection(); sync();
 // The selected element blinks in bright yellow about once a second (well under 3 flashes a second, safe
 // for photosensitive viewers); with "reduce motion" set in the system it stays lit instead.
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 renderer.setAnimationLoop(t => {
-  for (const sp of names.children) sp.visible = sp.userData.room.parent.visible && sp.userData.room.visible;
+  walkStep(t); hover();
   const k = still.matches ? 0.8 : 0.45 + 0.45 * Math.sin(t / 160);
   for (const m of lit) m.material.emissive.setRGB(k, 0.85 * k, 0);
-  renderer.render(scene, camera);
+  if (sectionOn) { const s = camera.isOrthographicCamera ? (camera.top - camera.bottom) / camera.zoom * 0.008 : 0.008;
+    for (const h of handles) h.scale.setScalar(camera.isOrthographicCamera ? s : Math.max(0.08, h.position.distanceTo(camera.position) * s)); }
+  renderer.render(scene, camera); drawTags(); drawGizmo();
 });
 </script></body></html>

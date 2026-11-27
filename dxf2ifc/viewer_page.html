@@ -153,7 +153,7 @@ const WINDOW_COLOUR = "#5aa9e6", esc = s => String(s ?? "").replace(/[&<>"]/g, c
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf4f5f7);
 let camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 5000);  // narrow: columns stay upright, less wide-angle lean
 camera.up.set(0, 0, 1);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });  // stencil: filled section cuts
 renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
 $("view").appendChild(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x9a9488, 2.0));
@@ -519,7 +519,7 @@ function toggleXray() {
     Object.assign(mat, xray ? {opacity: Math.min(u.opacity, 0.25), transparent: true, depthWrite: false} : u);
     mat.needsUpdate = true;
   }
-  toast(xray ? "X-ray on" : "X-ray off"); sync();
+  updateSection(); toast(xray ? "X-ray on" : "X-ray off"); sync();  // no caps in X-ray: they would hide what it shows
 }
 
 // ---- section box: six faces, drag the round handles; Alt + B is the plan cut at 1.2 m
@@ -534,12 +534,43 @@ for (let i = 0; i < 6; i++) {
   const h = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({color: 0xd81b60, depthTest: false, transparent: true, opacity: 0.85}));
   h.renderOrder = 11; h.visible = false; h.userData = {axis: AXES[i >> 1], max: i % 2 === 1}; handles.push(h); scene.add(h);
 }
+// Filled cuts (as three.js's clipping-stencil example): per face, each solid's back faces add 1 to the stencil and its
+// front faces take 1 away, behind that face only; where the count is not 0 the face lies inside a solid, so a dark
+// cap is drawn there, trimmed by the other five faces. The stencil copies are children: hide and isolate carry over.
+const capMat = i => new THREE.MeshBasicMaterial({color: 0x3d424a, side: THREE.DoubleSide, clippingPlanes: planes.filter((_, j) => j !== i),
+  stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp,
+  stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp});
+const stencilMat = (i, side, op) => new THREE.MeshBasicMaterial({side, clippingPlanes: [planes[i]], colorWrite: false, depthWrite: false, depthTest: false,
+  stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc, stencilFail: op, stencilZFail: op, stencilZPass: op});
+const caps = [], stencils = [];
+for (let i = 0; i < 6; i++) {
+  const cap = new THREE.Mesh(new THREE.PlaneGeometry(size * 4, size * 4), capMat(i));
+  cap.renderOrder = i + 1.1; cap.visible = false; cap.raycast = () => {};
+  cap.onAfterRender = r => r.clearStencil(); caps.push(cap); scene.add(cap);
+  const back = stencilMat(i, THREE.BackSide, THREE.IncrementWrapStencilOp), front = stencilMat(i, THREE.FrontSide, THREE.DecrementWrapStencilOp);
+  stencils.push([]);
+  for (const m of meshes) {
+    const item = m.userData; if (item.kind === "rooms" || item.kind === "gaps") continue;
+    let g = m.geometry;  // window panes included: the stencil needs the closed solid
+    if (item.glass?.length) { g = new THREE.BufferGeometry(); g.setAttribute("position", m.geometry.getAttribute("position")); g.setIndex(item.f); }
+    for (const mat of [back, front]) {
+      const s = new THREE.Mesh(g, mat); s.renderOrder = i + 1; s.visible = false; s.raycast = () => {};
+      m.add(s); stencils[i].push(s);
+    }
+  }
+}
 function updateSection() {
   const b = secBox, c = b.getCenter(new THREE.Vector3());
   [[V3(1, 0, 0), -b.min.x], [V3(-1, 0, 0), b.max.x], [V3(0, 1, 0), -b.min.y], [V3(0, -1, 0), b.max.y], [V3(0, 0, 1), -b.min.z], [V3(0, 0, -1), b.max.z]]
     .forEach(([n, d], i) => planes[i].set(n, d));
   handles.forEach(h => { h.position.copy(c); h.position[h.userData.axis] = (h.userData.max ? b.max : b.min)[h.userData.axis]; h.visible = sectionOn; });
   boxLines.visible = sectionOn;
+  caps.forEach((cap, i) => {  // a face that cuts into the model gets its cap; one outside it costs nothing
+    const a = AXES[i >> 1], on = sectionOn && !xray && (i % 2 ? b.max[a] < box.max[a] : b.min[a] > box.min[a]);
+    cap.visible = on; for (const s of stencils[i]) s.visible = on;
+    cap.position.copy(c); cap.position[a] = (i % 2 ? b.max : b.min)[a];
+    cap.quaternion.setFromUnitVectors(V3(0, 0, 1), planes[i].normal);
+  });
   for (const mat of clipped) { mat.clippingPlanes = sectionOn ? planes : null; mat.needsUpdate = true; }
   sync();
 }

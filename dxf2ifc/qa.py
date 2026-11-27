@@ -9,7 +9,9 @@ from pathlib import Path
 import ifcopenshell
 import ifcopenshell.util.element as element
 import ifcopenshell.validate
-from shapely.geometry import LineString, Point
+import ifcopenshell.util.placement
+from shapely.geometry import LineString, Point, Polygon
+from shapely.strtree import STRtree
 from shapely.ops import unary_union
 
 from . import config
@@ -51,6 +53,42 @@ def profile_ifc(path) -> dict:
             "psets": {cls: dict(names.most_common()) for cls, names in psets.items()},
             "doors_with_size": sum(bool(d.OverallWidth and d.OverallHeight) for d in doors),
             "doors": len(doors)}
+
+
+def _solids(product):
+    """(footprint, z from, z to) of each extruded solid in a product's body, in storey-free model coordinates."""
+    z0 = ifcopenshell.util.placement.get_local_placement(product.ObjectPlacement)[2, 3]
+    out = []
+    for representation in (product.Representation.Representations if product.Representation else []):
+        for item in representation.Items:
+            if not item.is_a("IfcExtrudedAreaSolid") or not item.SweptArea.is_a("IfcArbitraryClosedProfileDef"):
+                continue
+            curve = item.SweptArea.OuterCurve
+            points = ([p.Coordinates for p in curve.Points] if curve.is_a("IfcPolyline") else curve.Points.CoordList)
+            bottom = z0 + (item.Position.Location.Coordinates[2] if item.Position else 0.0)
+            out.append((Polygon([tuple(p[:2]) for p in points]).buffer(0), bottom, bottom + item.Depth))
+    return out
+
+
+def overlaps(ifc, tol=1e-4) -> list[tuple[str, str]]:
+    """Pairs of physical elements that share space (more than tol m2 in plan and 1 mm in height).
+    A door or window inside the opening of its own wall does not count: the opening is cut from the wall."""
+    skip = ("IfcSpace", "IfcOpeningElement", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcAnnotation")
+    host = {}
+    for rel in ifc.by_type("IfcRelFillsElement"):
+        for walls in rel.RelatingOpeningElement.VoidsElements:
+            host[rel.RelatedBuildingElement.id()] = walls.RelatingBuildingElement.id()
+    solids = [(p, *s) for p in ifc.by_type("IfcProduct") if not p.is_a() in skip for s in _solids(p)]
+    tree = STRtree([s[1] for s in solids])
+    pairs = set()
+    for i, (a, shape, z0, z1) in enumerate(solids):
+        for j in tree.query(shape):
+            b, other, w0, w1 = solids[j]
+            if j <= i or a.id() == b.id() or host.get(a.id()) == b.id() or host.get(b.id()) == a.id():
+                continue
+            if min(z1, w1) - max(z0, w0) > 1e-3 and shape.intersection(other).area > tol:
+                pairs.add(tuple(sorted((a.GlobalId, b.GlobalId))))
+    return sorted(pairs)
 
 
 def _share(items, ok):
@@ -123,6 +161,9 @@ def check(plans, ifc_path, runtime_s=None, errors=None) -> list[dict]:
     used = sum(plan["stats"]["wall_explained_length_m"] for plan in plans)
     add("R10", "Wall lines turned into walls", f"{min(used / drawn, 1):.0%}".replace("%", " %") if drawn else "no wall lines",
         f"{config.R10_MIN_COVERAGE:.0%}".replace("%", " %"), used / drawn >= config.R10_MIN_COVERAGE if drawn else None)
+
+    clash = overlaps(ifc)
+    add("R13", "No two elements share space", f"{len(clash)} overlapping pairs", "0", not clash)
 
     seconds = runtime_s if runtime_s is not None else sum(plan["stats"]["runtime_s"] for plan in plans)
     calls = max(plan["stats"]["llm_calls"] for plan in plans)

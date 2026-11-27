@@ -208,6 +208,7 @@ import uuid as _uuid
 GUID_NAMESPACE = _uuid.UUID("5ec0b1a2-d2f1-4c0e-9a11-0d5f2a1c7e06")  # fixed, so reruns give the same GlobalIds
 CONFIDENCE_COLOURS = {"high": (0.2, 0.7, 0.3), "medium": (1.0, 0.6, 0.1), "low": (0.85, 0.2, 0.2)}
 SPACE_TRANSPARENCY = 0.7  # rooms are see-through
+SLIVER = 0.03  # m, a piece of an element thinner than this after trimming overlaps is dropped
 OPENING_OVERCUT = 0.10  # m, an opening is this much deeper than its wall so it cuts cleanly
 LEAF_THICKNESS = 0.04  # m, door leaf
 FRAME_WIDTH, FRAME_DEPTH = 0.05, 0.12  # m, door and window frames (seen face, depth across the wall)

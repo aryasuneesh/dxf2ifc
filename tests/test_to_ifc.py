@@ -261,3 +261,20 @@ def test_beams_balcony_railing_and_roof_parapet(tmp_path):
     assert railing.Name == "Railing Balcon"  # three open sides; the side on the house wall has none
     roof_items = ifc.by_type("IfcRoof")[0].Representation.Representations[0].Items
     assert len(roof_items) == 1 + len(plan["slab"]["outline"])  # slab and one parapet piece per edge
+
+
+def test_no_two_elements_share_space(tmp_path):
+    from dxf2ifc.qa import overlaps
+    plan = copy.deepcopy(FIXTURE)
+    first = plan["walls"][0]
+    twin = {**copy.deepcopy(first), "id": "w99", "thickness_m": first["thickness_m"] / 2}  # drawn twice, inside the first
+    plan["walls"].append(twin)
+    plan["openings"].append({**copy.deepcopy(plan["openings"][0]), "id": "o99", "wall_id": "w99"})
+    (x, y), _ = first["axis"]
+    plan["columns"] = [{"id": "c1", "polygon": [[x - 0.2, y - 0.2], [x + 0.2, y - 0.2], [x + 0.2, y + 0.2], [x - 0.2, y + 0.2]],
+                        "round": False, "confidence": 0.7, "rule": "column_layer", "src": {"layer": "POTEAU", "handles": ["C1"]}}]
+    write_ifc([plan], tmp_path / "m.ifc")
+    ifc = ifcopenshell.open(str(tmp_path / "m.ifc"))
+    assert overlaps(ifc) == []  # corners, the twin wall and the column in the wall corner all resolved
+    assert len(ifc.by_type("IfcWall")) == len(FIXTURE["walls"])  # the twin is absorbed
+    assert len(ifc.by_type("IfcOpeningElement")) == len(FIXTURE["openings"])  # and its opening is not doubled

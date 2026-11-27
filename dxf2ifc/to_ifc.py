@@ -29,6 +29,8 @@ import ifcopenshell.guid
 import ifcopenshell.validate
 import numpy as np
 from ifcopenshell.util.shape_builder import ShapeBuilder
+from shapely.geometry import LineString, Point, Polygon
+from shapely.ops import split, unary_union
 
 from . import config
 from .schema import level
@@ -174,12 +176,22 @@ class _Writer:
         self.place(storey, elevation)
         self.trust(storey, plan, "storey", info["confidence"], f"height:{info['height_source']}")
 
-        walls = {}
+        # no two elements may share space: each claims its footprint in turn and later ones are trimmed to fit
+        full, top, flights, items = _Claims(), _Claims(), _Claims(), _Claims()  # full height, under the ceiling, stairs, furniture
+        column_pieces = {c["id"]: full.clip(c["polygon"]) for c in plan.get("columns", [])}
+        order = sorted(plan["walls"], key=lambda w: (-w["thickness_m"], -math.dist(*w["axis"]), w["id"]))
+        wall_pieces = {w["id"]: full.clip(_strip(w["axis"], w["thickness_m"])) for w in order}
+        curved_pieces = {w["id"]: full.clip(_ring(w)) for w in plan.get("curved_walls", [])}
+
+        walls, absorbed = {}, {}
         for wall in plan["walls"]:
             thickness = wall["thickness_m"]
+            if not wall_pieces[wall["id"]]:  # inside other walls: drawn twice or as a skin of another wall
+                absorbed[wall["id"]] = wall
+                continue
             product = self.root("IfcWall", f"Wall {round(thickness * 1000)} mm", *key(wall))
             self.place(product, elevation)
-            self.solid(product, _strip(wall["axis"], thickness), 0.0, height, wall["confidence"])
+            self.body_of(product, [(piece, 0.0, height) for piece in wall_pieces[wall["id"]]], wall["confidence"])
             self.pset(product, "Pset_WallCommon", {"Reference": f"{round(thickness * 1000)} mm",
                                                    "IsExternal": wall["is_external"]})
             self.trust(product, plan, wall["id"], wall["confidence"], wall["rule"], wall["src"])
@@ -187,21 +199,32 @@ class _Writer:
             walls[wall["id"]] = (product, wall)
 
         for wall in plan.get("curved_walls", []):  # the ring between the two arcs, full storey height
+            if not curved_pieces[wall["id"]]:
+                continue
             product = self.root("IfcWall", f"Curved wall {round(wall['thickness_m'] * 1000)} mm", *key(wall))
             self.place(product, elevation)
-            self.solid(product, _ring(wall), 0.0, height, wall["confidence"])
+            self.body_of(product, [(piece, 0.0, height) for piece in curved_pieces[wall["id"]]], wall["confidence"])
             self.pset(product, "Pset_WallCommon", {"Reference": f"{round(wall['thickness_m'] * 1000)} mm curved"})
             self.trust(product, plan, wall["id"], wall["confidence"], wall["rule"], wall["src"])
             walls[wall["id"]] = (product, None)
 
-        fillings = []
+        fillings, spans = [], []
         for opening in plan["openings"]:
-            host, wall = walls[opening["wall_id"]]
+            wall_id = opening["wall_id"]
+            if wall_id in absorbed:  # the wall that took its place carries the opening, unless it has one there already
+                wall_id = _nearest_wall(opening["center"], walls)
+            if wall_id is None or wall_id not in walls:
+                continue
+            host, wall = walls[wall_id]
             (x1, y1), (x2, y2) = wall["axis"]
             length = math.hypot(x2 - x1, y2 - y1)
             ux, uy = (x2 - x1) / length, (y2 - y1) / length
             half = opening["width_m"] / 2
-            cx, cy = opening["center"]
+            along = (opening["center"][0] - x1) * ux + (opening["center"][1] - y1) * uy
+            cx, cy = x1 + ux * along, y1 + uy * along  # on the host's axis
+            if any(other == wall_id and abs(along - at) < half + w for other, at, w in spans):
+                continue
+            spans.append((wall_id, along, half))
             span = [[cx - ux * half, cy - uy * half], [cx + ux * half, cy + uy * half]]
             ident = (tag, opening["id"], ",".join(sorted(opening["src"]["handles"])))
 
@@ -225,6 +248,20 @@ class _Writer:
                 self.trust(product, plan, opening["id"], opening["confidence"], opening["rule"], opening["src"])
                 fillings.append(product)
 
+        stairs = []
+        for stair in plan.get("stairs", []):  # steps laid out in the outline; the direction up is a guess
+            product = self.root("IfcStair", f"Stair {stair['id']}", *key(stair))
+            if self.old:
+                product.ShapeType = "NOTDEFINED"  # mandatory in IFC2X3
+            self.place(product, elevation)
+            steps = (_numbered_steps(stair["polygon"], stair["path"], height, stair.get("risers")) if stair.get("path")
+                     else _steps(stair["polygon"], height))
+            steps = [(p, *rest) for outline, *rest in steps for p in _Claims().clip(outline, full)]
+            flights.claim(*[p for p, *_ in steps])
+            self.body_of(product, steps, stair["confidence"])
+            self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"] + ("+numbers" if stair.get("path") else ""), stair["src"])
+            stairs.append(product)
+
         spaces = []
         for room in plan["rooms"]:
             space = self.root("IfcSpace", room["id"].upper(), *key(room))
@@ -242,7 +279,11 @@ class _Writer:
         for beam in plan.get("beams", []):  # under the ceiling, assumed depth
             product = self.root("IfcBeam", f"Beam {round(beam['width_m'] * 1000)} mm", *key(beam))
             self.place(product, elevation)
-            self.solid(product, _strip(beam["axis"], beam["width_m"]), height - config.BEAM_DEPTH, config.BEAM_DEPTH, beam["confidence"])
+            pieces = top.clip(_strip(beam["axis"], beam["width_m"]), full, flights)
+            if not pieces:
+                api.root.remove_product(f, product=product)
+                continue
+            self.body_of(product, [(p, height - config.BEAM_DEPTH, config.BEAM_DEPTH) for p in pieces], beam["confidence"])
             self.trust(product, plan, beam["id"], beam["confidence"], beam["rule"], beam["src"])
             fillings.append(product)
 
@@ -250,40 +291,33 @@ class _Writer:
         for room, space in zip(plan["rooms"], spaces):
             ceiling = self.root("IfcCovering", f"Ceiling {room['id']}", "ceiling", *key(room), predefined_type="CEILING")
             self.place(ceiling, elevation)
-            self.solid(ceiling, room["polygon"], height - config.CEILING_T, config.CEILING_T, config.CONF_CEILING)
-            self.trust(ceiling, plan, room["id"] + "-ceiling", config.CONF_CEILING, "assumed_ceiling")
-            fillings.append(ceiling)
+            pieces = _Claims().clip(room["polygon"], full, top, flights)  # no ceiling over a stairwell
+            if pieces:
+                self.body_of(ceiling, [(p, height - config.CEILING_T, config.CEILING_T) for p in pieces], config.CONF_CEILING)
+                self.trust(ceiling, plan, room["id"] + "-ceiling", config.CONF_CEILING, "assumed_ceiling")
+                fillings.append(ceiling)
+            else:
+                api.root.remove_product(f, product=ceiling)
             if balcony.search(room["name"]) and (edges := _open_edges(room["polygon"], plan["walls"])):
                 railing = self.root("IfcRailing", f"Railing {room['name']}", "railing", *key(room), predefined_type="BALUSTRADE")
                 self.place(railing, elevation)
-                self.body_of(railing, [part for edge in edges for part in _railing(edge)], config.CONF_RAILING)
+                self.body_of(railing, [(p, *rest) for edge in edges for outline, *rest in _railing(edge)
+                                       for p in _Claims().clip(outline, full)], config.CONF_RAILING)
                 self.trust(railing, plan, room["id"] + "-railing", config.CONF_RAILING, "assumed_balustrade", room["src"])
                 fillings.append(railing)
 
-        slab_info = plan["slab"]
+        slab_info = plan["slab"]  # under the storey: overlaps nothing
         slab = self.root("IfcSlab", "Floor slab", "slab", tag, predefined_type="FLOOR")
         self.place(slab, elevation)
         self.solid(slab, slab_info["outline"], -slab_info["thickness_m"], slab_info["thickness_m"], slab_info["confidence"])
         self.pset(slab, "Pset_SlabCommon", {"IsExternal": False})
         self.trust(slab, plan, "slab", slab_info["confidence"], slab_info["rule"])
 
-        stairs = []
-        for stair in plan.get("stairs", []):  # steps laid out in the outline; the direction up is a guess
-            product = self.root("IfcStair", f"Stair {stair['id']}", *key(stair))
-            if self.old:
-                product.ShapeType = "NOTDEFINED"  # mandatory in IFC2X3
-            self.place(product, elevation)
-            steps = (_numbered_steps(stair["polygon"], stair["path"], height, stair.get("risers")) if stair.get("path")
-                     else _steps(stair["polygon"], height))
-            self.body_of(product, steps, stair["confidence"])
-            self.trust(product, plan, stair["id"], stair["confidence"], stair["rule"] + ("+numbers" if stair.get("path") else ""), stair["src"])
-            stairs.append(product)
-
         columns = []
         for column in plan.get("columns", []):  # floor to ceiling: plans give no column heights
             product = self.root("IfcColumn", f"Column {column['id']}" + (" (round)" if column["round"] else ""), *key(column))
             self.place(product, elevation)
-            self.solid(product, column["polygon"], 0.0, height, column["confidence"])
+            self.body_of(product, [(p, 0.0, height) for p in column_pieces[column["id"]]], column["confidence"])
             self.trust(product, plan, column["id"], column["confidence"], column["rule"], column["src"])
             columns.append(product)
 
@@ -292,9 +326,13 @@ class _Writer:
             product = self.root(ifc_class, item["name"], *key(item), predefined_type=predefined)
             if ifc_class in ("IfcBuildingElementProxy", "IfcFlowTerminal", "IfcFurnishingElement"):
                 product.ObjectType = item["kind"]
-            _, bottom, top = config.EQUIPMENT[item["kind"]]
+            _, bottom, upper = config.EQUIPMENT[item["kind"]]
+            pieces = items.clip(item["polygon"], full, flights)
+            if not pieces:
+                api.root.remove_product(f, product=product)
+                continue
             self.place(product, elevation)
-            self.solid(product, item["polygon"], bottom, top - bottom, item["confidence"])
+            self.body_of(product, [(p, bottom, upper - bottom) for p in pieces], item["confidence"])
             self.trust(product, plan, item["id"], item["confidence"], item["rule"], item["src"])
             columns.append(product)
 
@@ -308,8 +346,11 @@ class _Writer:
             bottom = height - 0.4 if mount is None else mount
             x, y = symbol["position"]
             self.place(product, elevation)
-            self.solid(product, [(x - 0.15, y - 0.15), (x + 0.15, y - 0.15), (x + 0.15, y + 0.15), (x - 0.15, y + 0.15)],
-                       bottom, 0.3, symbol["confidence"])
+            pieces = items.clip([(x - 0.15, y - 0.15), (x + 0.15, y - 0.15), (x + 0.15, y + 0.15), (x - 0.15, y + 0.15)], full)
+            if not pieces:
+                api.root.remove_product(f, product=product)
+                continue
+            self.body_of(product, [(p, bottom, 0.3) for p in pieces], symbol["confidence"])
             self.trust(product, plan, symbol["id"], symbol["confidence"], symbol["rule"], symbol["src"])
             fire.append(product)
 
@@ -348,6 +389,52 @@ class _Writer:
         ifcopenshell.validate.validate(self.f, logger)
         self.f.write(str(out_path))  # written even with errors, so it can be inspected
         return [statement["message"] for statement in logger.statements]
+
+
+class _Claims:
+    """Footprints already taken. clip() trims an outline by them and by any other claims given, keeps what is
+    left as this claim's own, and returns it as hole-free outlines: no two elements ever share space.
+    # ponytail: plan-level only. Elements in different height bands (a beam over a door) are kept apart too,
+    # which costs a little where they would not have met; a 3D check would be exact."""
+
+    def __init__(self):
+        self.shapes = []
+
+    def claim(self, *outlines):
+        self.shapes += [Polygon(o) for o in outlines]
+
+    def clip(self, outline, *others):
+        shape = Polygon(outline).buffer(0)
+        hits = [s for claims in (self, *others) for s in claims.shapes if s.intersects(shape)]
+        pieces = _pieces(shape.difference(unary_union(hits)) if hits else shape)
+        self.claim(*pieces)
+        return pieces
+
+
+def _pieces(geom):
+    """Outlines of a trimmed footprint: holes cut open (an extrusion takes no holes), slivers dropped."""
+    out = []
+    for poly in getattr(geom, "geoms", [geom]):
+        if poly.geom_type != "Polygon" or poly.is_empty or poly.buffer(-config.SLIVER / 2).is_empty:
+            continue
+        if poly.interiors:  # cut across the first hole and try again
+            x, (_, y0, _, y1) = poly.interiors[0].centroid.x, poly.bounds
+            out += _pieces(split(poly, LineString([(x, y0 - 1), (x, y1 + 1)])))
+            continue
+        out.append([(round(x, 4), round(y, 4)) for x, y in poly.exterior.coords[:-1]])
+    return out
+
+
+def _nearest_wall(point, walls):
+    """The wall whose axis passes closest to point, within its own thickness: where an absorbed wall's opening goes."""
+    best = None
+    for wall_id, (_, wall) in walls.items():
+        if wall is None:
+            continue
+        distance = LineString(wall["axis"]).distance(Point(point))
+        if distance <= wall["thickness_m"] / 2 + config.WALL_NEAR and (best is None or distance < best[0]):
+            best = (distance, wall_id)
+    return best and best[1]
 
 
 def _strip(axis, thickness):

@@ -24,7 +24,7 @@ def test_tc40_run_writes_four_files(tmp_path, capsys):
     lines = capsys.readouterr().out.strip().splitlines()
     assert lines[0] == "File: house.dxf (layered, m)"
     assert lines[1].startswith("Walls 5 | Openings 2 | Rooms 2 | High ")
-    assert lines[2].startswith("Requirements: 11 passed, 0 failed, 0 n/a")
+    assert lines[2].startswith("Requirements: 12 passed, 0 failed, 0 n/a")
     assert lines[4].endswith("LLM calls: 0") and lines[5].endswith("review.html")
     plan = json.loads((tmp_path / "out" / "plan.json").read_text(encoding="utf-8"))
     assert plan["stats"]["runtime_s"] > 0

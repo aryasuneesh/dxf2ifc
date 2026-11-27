@@ -40,7 +40,7 @@ def test_tc36_wall_precision_and_recall():
 def test_tc37_requirements_on_the_fixture(tmp_path):
     plan, ifc_path, errors = built(tmp_path)
     checks = by_id(check([plan], ifc_path, runtime_s=1.5, errors=errors))
-    assert list(checks) == ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R12"]
+    assert list(checks) == ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R13", "R12"]
     for rid in ("R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R12"):
         assert checks[rid]["passed"] is True, checks[rid]
     assert checks["R9"]["value"] == "2 of 2 rooms" and checks["R9"]["passed"] is True

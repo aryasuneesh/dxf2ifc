@@ -1,146 +1,263 @@
+<div align="center">
+
 # dxf2ifc
 
-Turns a 2D floor plan (DXF) into an IFC model. Every element carries its source in the drawing and a confidence level, and the tool writes a review page that lists what an engineer must check.
+**From a 2D floor plan to a BIM model an engineer can check, in seconds.**
 
-Runs on a laptop CPU. No GPU, no paid service. An LLM is optional and off by default.
+dxf2ifc reads a DXF floor plan and writes a valid IFC model: walls, openings, slabs, rooms, stairs, columns and the structural grid.
+Every element records where it came from in the drawing and how sure the converter is, so the review starts where it matters.
 
-## Set up (once)
+![Python](https://img.shields.io/badge/python-3.10%2B-1d5fbf)
+![IFC](https://img.shields.io/badge/IFC-4%20%2B%202X3-1e7b45)
+![CPU only](https://img.shields.io/badge/runs%20on-CPU%20only-5b6270)
+![Tests](https://img.shields.io/badge/tests-171%20passing-1e7b45)
+![License](https://img.shields.io/badge/license-MIT-5b6270)
+
+<img src="docs/img/viewer.jpg" alt="The dxf2ifc 3D viewer: a converted test plan coloured by confidence, with the outliner on the left, the 2D plan and review questions on the right, and the toolbar at the bottom" width="860">
+
+<sub>A converted test plan in the built-in 3D viewer: confidence colours, outliner, room labels with area and use, the source plan and the review questions.</sub>
+
+</div>
+
+---
+
+## Contents
+
+- [Why](#why)
+- [What it does](#what-it-does)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [What the IFC contains](#what-the-ifc-contains)
+- [Quality checks](#quality-checks)
+- [Results on a real dataset](#results-on-a-real-dataset)
+- [The 3D viewer](#the-3d-viewer)
+- [Commands](#commands)
+- [Optional: a language model for unknown layers](#optional-a-language-model-for-unknown-layers)
+- [Project layout](#project-layout)
+- [Team and licence](#team-and-licence)
+
+## Why
+
+Engineering offices receive their clients' floor plans as 2D DXF drawings, and every client draws differently: layer names in French, German or English, walls as pairs of lines or as hatches, rooms as loose text.
+To check a building in a BIM tool, someone first redraws it by hand. That takes days.
+
+dxf2ifc does the redrawing in seconds and is honest about it. It never guesses silently: anything uncertain is marked, explained and placed on a short review list.
+
+## What it does
+
+|  |  |
+|---|---|
+| **Reads any DXF floor plan** | Text and binary DXF, metres to inches, nested blocks and xrefs flattened, labels in French, German and English. |
+| **Finds the building elements with rules, not a black box** | Layer names and geometry decide what is a wall, door, window, stair, column or room. No machine learning is needed; a language model is optional and only sees layer names. |
+| **Writes clean IFC4 and IFC2X3** | Storeys, walls with material layers, openings filled with doors and windows, slabs, rooms as `IfcSpace`, stairs, railings, columns, beams and an `IfcGrid`. No two elements share space. |
+| **Enriches every element** | Standard property sets (`Pset_*Common`), base quantities (`Qto_*BaseQuantities`), materials, and rooms with name, area and use. |
+| **Shows its confidence** | Every element carries a confidence level, the rule that made it and its source handles in the drawing. |
+| **Checks itself** | 12 requirement checks run on every model, from schema validity to room areas against the areas printed on the plan. |
+| **Makes review fast** | A review page lists only what needs a human, each item with a crop of the plan and a link to the element in 3D. |
+| **Runs anywhere, for free** | Plain Python on a laptop CPU. About 2 seconds per plan, no GPU, no paid service, nothing leaves the computer. |
+
+## Quick start
+
+**Requirements:** Python 3.10 or newer. Built and tested on Windows with Python 3.13 and 3.14.
 
 ```bash
 python -m venv .venv
-```
-
-```bash
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-Python 3.13 on Windows is what it was built and tested on.
-
-## Convert one plan
-
-```bash
-.venv\Scripts\python -m dxf2ifc run plan.dxf --out out\plan
-```
-
-This writes seven files into `out\plan`:
-
-| File | What it is |
-|---|---|
-| `model.ifc` | The IFC4 model. Elements are coloured by confidence in any viewer. |
-| `model_ifc2x3.ifc` | The same model in IFC2X3, the format of SECO's reference models. |
-| `review.html` | Open this first. The plan, the assumed values, the list of things to check, each with a link to it in 3D. Testers mark items correct or wrong and leave feedback at the bottom. |
-| `viewer.html` | The model in 3D in the browser, coloured by confidence. Works offline (three.js is inside the file); buttons and keys for zoom and stepping through low-confidence elements. Click an element for its IFC id, rule and source. `viewer.html#<GlobalId>` jumps to one element. A switch shows simulated room sensors bound to each room's id. |
-| `compare.html` | The review page and the 3D view side by side (open it through `serve` or `share`). |
-| `plan.json` | The same content as plain data. |
-| `roles.json` | What each drawing layer was taken to mean. |
-
-To open the IFC in Bonsai Viewer: **Add Model › Add IFC File** ("Open Project" is for Bonsai's own project files, not IFC).
-
-Useful options: `--elevation 7.48` and `--height 3.13` (storey level and height in metres), `--project NAME` (keeps element ids the same across revisions of a file), `--bbox xmin,ymin,xmax,ymax` (use one part of a sheet).
-
-## Try it in a browser
+### In the browser
 
 ```bash
 .venv\Scripts\python -m dxf2ifc serve
 ```
 
-Then open http://127.0.0.1:8000, choose a DXF, and press Convert. Everything stays on the computer.
+Open http://127.0.0.1:8000 and drop one or more DXF files on the page. Each plan is converted on your computer and appears as a card with its 3D view, review page, side-by-side view and both IFC files.
 
-## Several storeys in one building
+### From the command line
+
+```bash
+.venv\Scripts\python -m dxf2ifc run plan.dxf --out out\plan
+```
+
+| Output | What it is |
+|---|---|
+| `model.ifc` | The IFC4 model, coloured by confidence in any IFC viewer |
+| `model_ifc2x3.ifc` | The same model in IFC2X3, for tools and workflows that still use it |
+| `viewer.html` | The 3D viewer, one self-contained file that works offline |
+| `review.html` | The review page: assumed values, the checks, and the items to verify |
+| `compare.html` | The 2D plan and the 3D model side by side |
+| `plan.json` | Everything that was extracted, as plain data |
+| `roles.json` | What each drawing layer was taken to mean |
+
+Useful options: `--elevation 7.48` and `--height 3.13` set the storey level and height in metres, `--project NAME` keeps element IDs stable across revisions of a drawing, and `--bbox xmin,ymin,xmax,ymax` converts one part of a sheet.
+
+### Several storeys
 
 ```bash
 .venv\Scripts\python -m dxf2ifc merge out\level1\plan.json out\level2\plan.json --out out\building.ifc
 ```
 
-This also writes `building_ifc2x3.ifc` and a 3D view `building.html`. The top storey gets a flat roof, marked as an assumption (no floor plan shows the roof).
+Storeys are stacked into one building, with a flat roof over the top storey marked as an assumption.
 
-## User tests
+## How it works
 
-Testers use the review page from the try-it server; their answers land in `out\web\feedback.jsonl`.
-
-```bash
-.venv\Scripts\python -m dxf2ifc feedback out\web\feedback.jsonl
+```mermaid
+flowchart LR
+    A["DXF plan"] --> B["Normalise<br/>segments and labels in metres"]
+    B --> C["Layer roles<br/>name rules + geometry"]
+    C --> D["Extract<br/>walls, openings, rooms, stairs"]
+    D --> E["Write IFC<br/>IFC4 + IFC2X3"]
+    E --> F["Check<br/>12 requirements"]
+    F --> G["Review<br/>3D viewer + review page"]
 ```
 
-How to run a test and where to record it: `docs/USER_TESTS.md`.
+1. **Normalise** (`normalize.py`). Any DXF becomes line segments and joined text labels in metres. Blocks and xrefs are flattened.
+2. **Layer roles** (`roles.py`). Each layer is sorted into walls, doors, windows, stairs, columns, furniture, text and so on, by keyword rules in three languages and AIA layer names. If no layer is named for walls, walls are found by line weight. A confirmed mapping can be saved and reused for the next drawing with the same layers.
+3. **Extract** (`extract.py`). Pairs of parallel lines become walls; gaps and door swings become openings; closed spaces become rooms, named by the labels inside them; runs of treads become stairs. Overlaps are resolved here: doors and windows are trimmed where they cross another wall, and furniture is kept clear of doors.
+4. **Write** (`to_ifc.py`). The IFC model, with property sets, quantities, materials and a trust record on every element. Element IDs are derived from the drawing, so a second run gives the same IDs.
+5. **Check and review** (`qa.py`, `review.py`, `viewer.py`). The requirement checks, the review page and the 3D viewer.
 
-## Send to testers by email (no server)
+Every threshold lives in [`dxf2ifc/config.py`](dxf2ifc/config.py), each with the reason for its value.
 
-```bash
-.venv\Scripts\python -m dxf2ifc share-pack out\plan_a out\plan_b --offline --zip "out\dxf2ifc user test.zip"
-```
+## What the IFC contains
 
-Testers unzip it and open `START HERE.html`, then a plan: the 3D model with the 2D plan in a corner. **Next** goes to
-each element the program is unsure about; they mark it Correct, Wrong or Not sure and can comment. In Chrome and Edge,
-the first answer asks where to save `feedback-<plan>.json`, and every answer is written to that file straight away
-(and kept in the browser too). In other browsers, **Download feedback** gives the file. They email it back.
-Sum up the files you receive with `python -m dxf2ifc feedback feedback-*.json`.
-
-## Share with testers online
-
-`share-pack` zips converted plans with a small website (review, 3D, side by side, feedback form with comments);
-`share` runs the same site locally. Free hosting steps on PythonAnywhere: `docs/HOSTING.md`.
-
-```bash
-.venv\Scripts\python -m dxf2ifc share-pack out\plan_a out\plan_b --zip out\site.zip
-```
-
-## Other commands
-
-| Command | Does |
-|---|---|
-| `bench` | Accuracy on synthetic plans where the true answer is known |
-| `triage <folder-or-zip>` | Fast scan of many DXF files to find the floor plans |
-| `shortlist data\dxf_index.csv` | Ranks scanned files and draws thumbnails |
-| `batch data\dxf_index.csv` | Runs the pipeline on every plan-like file and records the results |
-| `profile-ifc model.ifc --out profile.json` | Lists what an IFC file contains |
-| `save-mapping out\plan\roles.json` | Keeps a corrected layer mapping for the next file with the same layers |
-
-## Optional: an LLM for unknown layer names
-
-Layers are classified by French, German and English keyword rules. For layers the rules can't place, one question can go to an LLM. It receives layer names, entity counts and a few text samples with every digit masked. It never receives geometry.
-
-Create a file named `.env` in this folder:
-
-```
-LLM_PROVIDER=groq
-LLM_MODEL=qwen/qwen3.8-27b
-GROQ_API_KEY=<your key>
-```
-
-`LLM_PROVIDER` can be `groq`, `openrouter`, `ollama` (fully local) or `none`. The key can also be given as `LLM_API_KEY` or `OPENROUTER_API_KEY`. Answers are cached, so a second run on the same file costs nothing.
-
-Tried on 19 Nov on a synthetic plan whose five layers have names no rule knows (`STRUCT_2D`, `MENUIS_INT`, ...):
-
-| Provider and model (free tier) | Layers right | Time |
+| Element | IFC entity | Data attached |
 |---|---|---|
-| none (rules only) | 1 of 5 | 0 s |
-| groq `qwen/qwen3.8-27b` | 5 of 5 | 0.3 s |
-| groq `openai/gpt-oss-20b` | 5 of 5 | 0.4 s |
-| groq `openai/gpt-oss-120b` | 5 of 5 | 0.9 s |
-| openrouter `nvidia/nemotron-3.5-lightning:free` | 5 of 5 | 20 s |
-| openrouter `google/gemma-4-31b-it:free` | no usable answer | 6 s |
+| Project, site, building, storeys | `IfcProject`, `IfcSite`, `IfcBuilding`, `IfcBuildingStorey` | names, elevations, drawing georeference |
+| Walls | `IfcWall` | `Pset_WallCommon`, `Qto_WallBaseQuantities`, `IfcMaterialLayerSet` |
+| Doors and windows | `IfcDoor`, `IfcWindow` in an `IfcOpeningElement` | width, height, sill, host wall |
+| Floor slabs | `IfcSlab` | `Pset_SlabCommon`, `Qto_SlabBaseQuantities`, material |
+| Rooms | `IfcSpace` | name, floor area, use, `Pset_SpaceCommon`, `Pset_SpaceOccupancyRequirements`, `Qto_SpaceBaseQuantities` |
+| Stairs and railings | `IfcStair`, `IfcRailing` | `Pset_StairCommon`, `Pset_RailingCommon` |
+| Columns and beams | `IfcColumn`, `IfcBeam` | `Qto_ColumnBaseQuantities`, `Qto_BeamBaseQuantities` |
+| Ceilings | `IfcCovering` | `Qto_CoveringBaseQuantities` |
+| Furniture and fixtures | `IfcFurnishingElement`, `IfcFlowTerminal` | type as drawn |
+| Structural grid | `IfcGrid` | axis tags as drawn |
+| Fire-safety symbols | typed `IfcBuildingElementProxy` | extinguishers, detectors, exit signs |
 
-Before turning this on for a client's plans, check that client's rules on external AI. For SECO plans, use `ollama` or get SECO's agreement first.
+Every element also carries a trust property set: **confidence** (high, medium or low), the **rule** that produced it, its **source handles and layer** in the DXF, and a **to-be-verified** flag. Viewers that colour by property show the confidence at a glance.
 
-## Tests
+## Quality checks
+
+Each model is checked against requirements we defined from what an engineer needs before trusting a model. The results are written to `checks.json` and shown on the review page.
+
+| | Requirement | Pass when |
+|---|---|---|
+| R1 | The IFC file is valid | 0 schema errors |
+| R2 | Project, site, building and storeys with name and elevation | all present |
+| R3 | Walls have a body, a thickness and `Pset_WallCommon` | every wall |
+| R4 | Doors have a width and a height and sit in an opening in a wall | every door |
+| R5 | One floor slab per storey | at least one per storey |
+| R6 | Rooms have a name and a floor area | every room |
+| R7 | Elements carry a confidence and their source | every element |
+| R8 | A second run gives the same element IDs | identical |
+| R9 | Room areas match the areas printed on the plan | within 5 % |
+| R10 | Wall lines in the drawing become walls | at least 85 % of their length |
+| R12 | Fast and free to run | under 60 s, at most 1 language-model call |
+| R13 | No two elements share space | 0 overlapping pairs (1 mm tolerance) |
+
+R11, accuracy on synthetic plans with a known answer, runs separately with `python -m dxf2ifc bench`.
+
+## Results on a real dataset
+
+The full pipeline was run on every plan-like drawing of a real dataset of engineering drawings:
+
+| | |
+|---|---|
+| DXF files scanned | **15,971** |
+| Floor plans converted end to end | **2,599** |
+| Finished without error | **2,591** (99.7 %) |
+| Median time per plan | **2.0 s** on a laptop CPU |
+| Median share of wall lines turned into walls | **84 %** |
+| Rooms checked against a printed area | **5,808** |
+| Rooms within 5 % of the printed area | **50 %** |
+| Stairs found | **7,033** in 1,607 plans |
+| Fire-safety symbols found | **1,744** in 168 plans |
+
+On the five showcase plans, every model is valid with **zero overlapping elements**. One plan passes all 12 checks; the other four pass 11 of 12, with room areas (R9) or wall-line coverage (R10) as the open point. These are reported, not hidden: the review page names every room whose area does not match.
+
+## The 3D viewer
+
+`viewer.html` is a single file with three.js inside. It opens offline in any modern browser, and its controls follow Blender, so they feel familiar to anyone who models.
+
+- **Navigate:** orbit, pan, zoom; front, right and top views on 1, 3 and 7; orthographic on 5; an axis gizmo; frame the selection with F.
+- **Inspect:** hover for a tag, click for the IFC ID, property sets, quantities, rule and source. Shift-click several elements to get their total length, area and volume.
+- **Cut:** a section box with draggable handles (Shift+B), or a horizontal cut at 1.2 m like a printed plan (Alt+B). Cut faces are filled.
+- **Organise:** an outliner tree with search and show/hide per element or type; hide, isolate and X-ray.
+- **Measure and read:** point-to-point measure, wall dimensions, the structural grid with its axis labels, storey levels, room labels with area and use.
+- **Walk:** first-person walk with W A S D.
+- **Review:** step through the elements the converter is unsure about, mark each Correct, Wrong or Not sure, and download the answers.
+
+Press **?** in the viewer for the full key list. The toolbar does the same with the mouse.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `run <plan.dxf>` | Convert one plan |
+| `serve` | Local home page: drop DXF files, browse conversions |
+| `merge <plan.json>...` | Stack storeys into one building |
+| `bench` | Accuracy on synthetic plans with a known answer |
+| `triage <folder-or-zip>` | Fast scan of many DXF files to find the floor plans |
+| `shortlist <index.csv>` | Rank scanned files and draw thumbnails |
+| `batch <index.csv>` | Run the pipeline on every plan-like file and record the results |
+| `profile-ifc <model.ifc>` | List what an IFC file contains |
+| `save-mapping <roles.json>` | Keep a confirmed layer mapping for drawings with the same layers |
+| `share-pack <plans>... --offline` | Package converted plans and the converter as one folder to send |
+| `feedback <files>` | Sum up the review answers |
+
+All commands run as `python -m dxf2ifc <command>`; add `--help` to any of them for its options.
+
+## Optional: a language model for unknown layers
+
+The rules recognise most layer names. For the few they cannot place, one question can go to a language model. It receives only layer names, entity counts and a few text samples with every digit masked, never the geometry. Answers are cached, so a second run on the same drawing makes no call.
+
+To turn it on, create a `.env` file in the project folder:
+
+```ini
+LLM_PROVIDER=groq            # groq, openrouter, ollama (fully local) or none
+LLM_MODEL=qwen/qwen3.8-27b
+GROQ_API_KEY=<your key>      # or OPENROUTER_API_KEY / LLM_API_KEY
+```
+
+On a test plan whose five layers had names no rule knows, rules alone placed 1 of 5; with the model, all 5 were right in 0.3 s. With `ollama`, everything stays on the computer.
+
+## Project layout
+
+```text
+dxf2ifc/
+├── dxf2ifc/
+│   ├── normalize.py      DXF to segments and labels in metres
+│   ├── roles.py          layer roles from name rules and geometry
+│   ├── llm.py            optional language-model step for unknown layers
+│   ├── extract.py        walls, openings, rooms, stairs, columns, grid
+│   ├── schema.py         the plan.json contract
+│   ├── to_ifc.py         IFC4 and IFC2X3 writer
+│   ├── qa.py             requirement checks and overlap test
+│   ├── review.py         review page
+│   ├── viewer.py         3D viewer and side-by-side page
+│   ├── triage.py         dataset scan and shortlist
+│   ├── batch.py          dataset runs
+│   ├── share.py          packaging for sharing
+│   ├── cli.py            command line and local web server
+│   └── config.py         every threshold, with its reason
+├── tests/                171 tests on synthetic drawings
+└── docs/
+    └── BACKEND.md        storage options for an office-wide deployment
+```
+
+Run the tests with:
 
 ```bash
 .venv\Scripts\python -m pytest -q
 ```
 
-Tests use only synthetic drawings made by `tests/fixtures.py`.
+The tests generate their own drawings (`tests/fixtures.py`), so no real plan is needed.
 
-## Data rule
+**Going further.** [`docs/BACKEND.md`](docs/BACKEND.md) compares storage options for running dxf2ifc across a whole office: object storage for DXF and IFC files, PostgreSQL with PostGIS for elements and review results, keyed by stable IFC IDs.
 
-No client drawing, and nothing derived from one, belongs in this repository. `out/`, `data/` and `docs/results.md` are ignored by git for that reason.
+## Team and licence
 
-## How it works
+Built by **team MADS** at the University of Luxembourg Student AI Lab hackathon, 2026.
 
-1. **Normalise** (`normalize.py`): any DXF becomes segments and labels in metres; blocks are flattened.
-2. **Layer roles** (`roles.py`): decide which layers hold walls, doors, text and so on. If no layer is named for walls, walls are picked by line weight.
-3. **Extract** (`extract.py`): pairs of parallel lines become walls, gaps and door swings become openings, closed spaces become rooms named by the labels inside them. Stairs come from stair layers or from runs of treads; fire-safety symbols (extinguishers, detectors, exit signs) from fire layers.
-4. **Write** (`to_ifc.py`): the IFC files, with a `SECO_Trust` property set on every element.
-5. **Check and review** (`qa.py`, `review.py`, `viewer.py`): the minimum-requirements table, the review page and the 3D view.
-
-Every threshold is in `dxf2ifc/config.py`. Known shortcuts are marked in the code with `# ponytail:`.
+Released under the [MIT licence](LICENSE).

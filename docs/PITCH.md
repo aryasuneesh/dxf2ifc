@@ -1,6 +1,6 @@
 # Pitch outline (30 Nov: 5 min demo + 5 min Q&A)
 
-Draft. To be finished after the pitch workshop (week 4) and the user tests in `USER_TESTS.md`.
+Draft. To be finished after the pitch workshop (week 4) and the user tests.
 Numbers marked [run] come from the latest dataset run in `STATUS.md`; numbers marked [test] come from user tests.
 
 ## The story in one line

@@ -17,14 +17,14 @@ Status: **done**, **partly** (works, with a known limit), **open** (not started)
 | Choose an idea (brainstorm, group, vote on impact and feasibility) | done | `PLAN.md` §1 (team folder, not in this repo) |
 | Define the concept, at most 3 MUSTs | done | `PLAN.md` §1.2: valid IFC, trust layer, measured quality |
 | Prototype: a rough version | done | this repo; `python -m dxf2ifc run plan.dxf` |
-| Try it for 10 minutes with an outsider | **open (team)** | tooling ready: feedback form on the review page, protocol in `USER_TESTS.md` |
+| Try it for 10 minutes with an outsider | **open (team)** | tooling ready: feedback form on the review page |
 
 ### Week 3: build, test, build, test
 
 | Step | Status | Where |
 |---|---|---|
-| Test with the real user profile (engineers), collect feedback | **open (team)** | `USER_TESTS.md`: who, how, where answers land; `python -m dxf2ifc feedback` sums them up |
-| Iterate on what they say, record before and after | open | one block per round in `USER_TESTS.md` |
+| Test with the real user profile (engineers), collect feedback | **open (team)** | `python -m dxf2ifc feedback` sums them up |
+| Iterate on what they say, record before and after | open | |
 
 ### The three MUSTs
 
@@ -97,4 +97,4 @@ Status: **done**, **partly** (works, with a known limit), **open** (not started)
 - **16 Nov**: walls, openings, door swings, rooms, storey and slab; IFC4 writer with trust properties and stable IDs; dataset triage (text and binary DXF); batch runner; requirement checks R1–R12 and review page; command line, storey merge and local try-it page; README. First dataset run.
 - **19 Nov, morning**: room fixes. Raster bias removed (rooms came out ~2 % small). Buildings drawn in loose pieces are kept whole (one sheet had lost 1,218 walls). Window lines close glazed facades. AIA hatch (`-PATT`) and column (`COLS`) layers recognised. Repo on GitHub.
 - **19 Nov, afternoon**: MIT licence. LLM step tested on free tiers with a synthetic plan (Groq `qwen/qwen3.8-27b`: 5 of 5 layers right in 0.3 s; rules alone: 1 of 5). IFC2X3 written next to IFC4. 3D browser viewer with confidence colours, element details and links by GlobalId. Stairs (stair layers, tread runs) and an assumed flat roof on merged buildings. Fire-safety symbols. Simulated room sensors. Correct/Wrong buttons and a feedback form on the review page, `feedback` command, user-test protocol. Pitch outline. Dataset re-run from a frozen copy of the code (§2).
-- **21 Nov**: pitch numbers filled; demo plans chosen and re-run; draft slides. Plan and 3D side by side (`compare.html`). IFC loads in Bonsai Viewer. 3D view works offline, with buttons and keys. Review page easier to read: section links, how-to box, Not sure button, comment per item, general remarks, marks kept in the browser until sent. Test website (`share`, `share-pack`) with password and feedback file, hosting steps for free PythonAnywhere in `HOSTING.md`.
+- **21 Nov**: pitch numbers filled; demo plans chosen and re-run; draft slides. Plan and 3D side by side (`compare.html`). IFC loads in Bonsai Viewer. 3D view works offline, with buttons and keys. Review page easier to read: section links, how-to box, Not sure button, comment per item, general remarks, marks kept in the browser until sent. Test website (`share`, `share-pack`) with password and feedback file.
